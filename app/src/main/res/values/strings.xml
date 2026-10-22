@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Mora</string>
+    <string name="accessibility_service_label">Mora Pause &amp; Focus Lock</string>
+    <string name="accessibility_service_description">Detects when apps you select are opened so Mora can show an optional breathing pause or overdue-task Focus Lock reminder. Does not read screen text or personal content; all detection stays on-device.</string>
+</resources>
