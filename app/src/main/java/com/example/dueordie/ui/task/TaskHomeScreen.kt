@@ -74,6 +74,7 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -266,12 +267,14 @@ fun TaskHomeScreen(
             contentPadding = PaddingValues(bottom = navBarBottom + 100.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header: "Tasks" title cleanly positioned (New task button moved to bottom)
+            // Header: "Tasks" title on left, Settings gear on right
             item(key = "tasks-header") {
-                Box(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = statusBarTop + 16.dp, bottom = 12.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = statusBarTop + 16.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "Tasks",
@@ -281,6 +284,17 @@ fun TaskHomeScreen(
                         ),
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    IconButton(
+                        onClick = onNavigateToPermissions,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_nav_settings),
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 
@@ -406,37 +420,7 @@ fun TaskHomeScreen(
                 .padding(bottom = 88.dp)
         )
 
-        // Always accessible New Task button at the bottom of the screen
-        Surface(
-            onClick = { viewModel.openAddTaskDialog() },
-            shape = RoundedCornerShape(999.dp),
-            color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            shadowElevation = 8.dp,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = navBarBottom + 84.dp)
-                .height(48.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "New task",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                )
-            }
-        }
+
     }
 
     if (uiState.isTaskDialogVisible) {

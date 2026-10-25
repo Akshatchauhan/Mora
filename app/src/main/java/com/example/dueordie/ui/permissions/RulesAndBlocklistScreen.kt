@@ -39,6 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -58,6 +59,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -121,6 +123,7 @@ import java.util.Locale
 
 @Composable
 fun RulesAndBlocklistScreen(
+    onNavigateBack: () -> Unit = {},
     onReplayIntroduction: () -> Unit = {},
     onOpenNotionSync: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -259,8 +262,24 @@ fun RulesAndBlocklistScreen(
             ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Screen Heading matching 3:859
-        Column(modifier = Modifier.padding(bottom = 4.dp)) {
+        // Screen Heading with back navigation
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onNavigateBack,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "Settings",
                 style = MaterialTheme.typography.headlineLarge.copy(

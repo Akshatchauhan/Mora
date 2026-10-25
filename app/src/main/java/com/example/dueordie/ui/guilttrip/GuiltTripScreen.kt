@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +77,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dueordie.R
 import com.example.dueordie.data.model.DayActivity
 import com.example.dueordie.data.model.Task
 import com.example.dueordie.util.AppUsageInfo
@@ -137,7 +139,7 @@ fun GuiltTripScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header with Title & Top-Right Green Flame Streak Badge
+        // Header with Title & Top-Right Green Flame Streak Badge + Settings
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -146,14 +148,14 @@ fun GuiltTripScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Progress",
+                        text = "Balance",
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "App activity & digital wellbeing",
+                        text = "Mindful limits & screen balance",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -207,6 +209,19 @@ fun GuiltTripScreen(
                             contentDescription = "Refresh usage data",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Settings Gear Button
+                    IconButton(
+                        onClick = onNavigateToSettings,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_nav_settings),
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
