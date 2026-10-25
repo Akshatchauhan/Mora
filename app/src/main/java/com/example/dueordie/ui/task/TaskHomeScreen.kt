@@ -1188,12 +1188,49 @@ private fun HoldToCompleteCheckbox(
     externalProgress: Float,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val haptics = remember(context) { MoraHaptics(context) }
+    val checkScale = remember { androidx.compose.animation.core.Animatable(1f) }
     val ringColor = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    LaunchedEffect(completed) {
+        if (completed) {
+            checkScale.animateTo(
+                targetValue = 1.24f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
+            checkScale.animateTo(
+                targetValue = 1.0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+        } else {
+            checkScale.snapTo(1f)
+        }
+    }
 
     Box(
         modifier = Modifier
             .size(48.dp)
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                scaleX = checkScale.value
+                scaleY = checkScale.value
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {
+                    if (!completed) {
+                        haptics.onHoldTaskCompleted()
+                    }
+                    onClick()
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (!completed && externalProgress > 0f) {
@@ -1207,7 +1244,7 @@ private fun HoldToCompleteCheckbox(
         }
         Icon(
             imageVector = if (completed) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-            contentDescription = null,
+            contentDescription = if (completed) "Task completed" else "Mark task complete",
             tint = if (completed) SemanticSuccessGreen else ringColor.copy(alpha = 0.85f),
             modifier = Modifier.size(24.dp)
         )

@@ -48,6 +48,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -345,19 +347,40 @@ private fun ThemeAwareBottomNavBar(
                 val tabCount = MainTab.entries.size
                 val tabWidth = maxWidth / tabCount
                 val selectedIndex = selectedTab.ordinal
-                val animatedOffset by animateDpAsState(
-                    targetValue = tabWidth * selectedIndex,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
-                    label = "navIndicatorOffset"
+                val targetLeft = tabWidth * selectedIndex
+                val targetRight = targetLeft + tabWidth
+
+                // Liquid dual-spring: the leading edge snaps forward while trailing edge lags,
+                // creating an organic fluid stretch during transit that settles on arrival
+                val leftSpring = spring<Dp>(
+                    stiffness = if (selectedIndex == 0) Spring.StiffnessMedium else Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioLowBouncy
+                )
+                val rightSpring = spring<Dp>(
+                    stiffness = if (selectedIndex == 1) Spring.StiffnessMedium else Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioLowBouncy
                 )
 
-                // Smooth sliding light cream pill indicator
+                val animatedLeft by animateDpAsState(
+                    targetValue = targetLeft,
+                    animationSpec = leftSpring,
+                    label = "navIndicatorLeft"
+                )
+                val animatedRight by animateDpAsState(
+                    targetValue = targetRight,
+                    animationSpec = rightSpring,
+                    label = "navIndicatorRight"
+                )
+
+                val indicatorWidth = (animatedRight - animatedLeft).coerceAtLeast(tabWidth * 0.85f)
+
+                // Smooth sliding liquid cream pill indicator with elastic stretch
                 Surface(
                     shape = RoundedCornerShape(22.dp),
                     color = Color(0xFFFAF9F5), // Crisp light cream pill
                     modifier = Modifier
-                        .offset(x = animatedOffset)
-                        .width(tabWidth)
+                        .offset(x = animatedLeft)
+                        .width(indicatorWidth)
                         .fillMaxHeight()
                 ) {}
 

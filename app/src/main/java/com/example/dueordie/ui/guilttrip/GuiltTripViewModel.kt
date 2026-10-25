@@ -11,6 +11,7 @@ import com.example.dueordie.data.model.TaskDomainRules
 import com.example.dueordie.data.model.TaskStatus
 import com.example.dueordie.data.repository.TaskRepository
 import com.example.dueordie.util.AppUsageInfo
+import com.example.dueordie.util.DailyUsageSummary
 import com.example.dueordie.util.OnboardingPreferences
 import com.example.dueordie.util.PermissionHelper
 import com.example.dueordie.util.UsageStatsHelper
@@ -113,14 +114,15 @@ class GuiltTripViewModel(
         viewModelScope.launch {
             val usageGranted = PermissionHelper.isUsageStatsPermissionGranted(context)
             val trackingEnabled = onboardingPrefs.isUsageTrackingEnabled
-            val topApps = if (usageGranted && trackingEnabled) {
+            val summary = if (usageGranted && trackingEnabled) {
                 withContext(Dispatchers.IO) {
-                    UsageStatsHelper.getTopUsedAppsToday(context, limit = 8)
+                    UsageStatsHelper.getTodayUsageSummary(context, limit = 8)
                 }
             } else {
-                emptyList()
+                DailyUsageSummary(0L, emptyList())
             }
-            val totalTime = topApps.sumOf { it.usageTimeMs }
+            val topApps = summary.topApps
+            val totalTime = summary.totalScreenTimeMs
             val currentOverdueCount = _uiState.value.totalOverdueCount
             val message = UsageStatsHelper.buildNeutralScreenTimeSummary(topApps, currentOverdueCount)
 
