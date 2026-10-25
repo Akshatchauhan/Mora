@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -83,16 +84,6 @@ import com.example.dueordie.data.model.Task
 import com.example.dueordie.util.AppUsageInfo
 import com.example.dueordie.util.OnboardingPreferences
 import com.example.dueordie.util.TimeFormatUtils
-
-private val DonutChartColors = listOf(
-    Color(0xFF234E39), // Forest Deep
-    Color(0xFF4C7B5D), // Classic Sage
-    Color(0xFF7FA78D), // Celadon Mint
-    Color(0xFFD4C7B5), // Warm Sand
-    Color(0xFFAE8B6D), // Warm Clay
-    Color(0xFF638A77), // Slate Moss
-    Color(0xFF8C9286)  // Muted Olive
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -228,9 +219,9 @@ fun GuiltTripScreen(
             }
         }
 
-        // Screen Time Donut / Pie Chart Dashboard
+        // Screen Time Hero Overview Card (Editorial fluid layout)
         item {
-            ScreenTimeDonutDashboard(
+            BalanceOverviewCard(
                 totalScreenTimeMs = uiState.totalScreenTimeMs,
                 topApps = uiState.topUsedApps,
                 isUsageTrackingEnabled = uiState.isUsageTrackingEnabled,
@@ -454,11 +445,12 @@ fun GuiltTripScreen(
 }
 
 /**
- * Digital Wellbeing style screen time card with clean Donut / Pie Chart canvas.
- * Matches layout from media_1791909709119_06af7317.png.
+ * Modern flagship balance overview card.
+ * Replaces the AI-like multi-colored rainbow donut with an elegant,
+ * proportional fluid allocation track and high-impact editorial typography.
  */
 @Composable
-private fun ScreenTimeDonutDashboard(
+private fun BalanceOverviewCard(
     totalScreenTimeMs: Long,
     topApps: List<AppUsageInfo>,
     isUsageTrackingEnabled: Boolean,
@@ -468,8 +460,8 @@ private fun ScreenTimeDonutDashboard(
 ) {
     OutlinedCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         colors = CardDefaults.outlinedCardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -477,167 +469,147 @@ private fun ScreenTimeDonutDashboard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(22.dp)
         ) {
-            // Dropdown / Category Tag
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFFEAF3ED),
-                modifier = Modifier.padding(bottom = 12.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Screen time",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    color = Color(0xFF2E6B4B),
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
-                )
+                // Calm pill badge
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                ) {
+                    Text(
+                        text = "Today's screen time",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                    )
+                }
+
+                if (isUsageTrackingEnabled && isPermissionGranted && topApps.isNotEmpty()) {
+                    Text(
+                        text = "${topApps.size} active apps",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Big Bold Screen Time
             val formattedScreenTime = TimeFormatUtils.formatScreenTime(totalScreenTimeMs)
             Text(
                 text = formattedScreenTime,
-                style = MaterialTheme.typography.headlineMedium.copy(
+                style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp
+                    fontSize = 36.sp,
+                    letterSpacing = (-0.5).sp
                 ),
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "Today",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp)
+                color = MaterialTheme.colorScheme.onSurface
             )
 
-            // Donut Canvas or Permission Request
             if (!isUsageTrackingEnabled || !isPermissionGranted) {
-                Box(
-                    modifier = Modifier
-                        .size(160.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .clickable(onClick = onEnableTracking),
-                    contentAlignment = Alignment.Center
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onEnableTracking,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.HourglassBottom,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Tap to enable\nusage access",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            } else if (topApps.isEmpty() || totalScreenTimeMs <= 0L) {
-                // Calm empty donut placeholder
-                Box(
-                    modifier = Modifier.size(160.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawArc(
-                            color = Color(0xFFE5EDE7),
-                            startAngle = 0f,
-                            sweepAngle = 360f,
-                            useCenter = false,
-                            style = Stroke(width = 24.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Rounded.HourglassBottom,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "No usage\nrecorded",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
+                        text = "Enable usage access for live stats",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
                     )
                 }
+            } else if (topApps.isEmpty() || totalScreenTimeMs <= 0L) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "No screen activity recorded yet today.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             } else {
-                // Interactive Donut Chart
-                Box(
-                    modifier = Modifier.size(170.dp),
-                    contentAlignment = Alignment.Center
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Modern horizontal allocation bar (Apple Screen Time / ColorOS fluid bar style)
+                val totalAppTime = topApps.take(4).sumOf { it.usageTimeMs }.coerceAtLeast(1L).toFloat()
+                val allocationColors = listOf(
+                    Color(0xFF2E6B4B), // Primary Forest
+                    Color(0xFF528F6C), // Soft Sage
+                    Color(0xFF7FA88F), // Muted Celadon
+                    Color(0xFFB0C5B8)  // Pale Mist
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Canvas(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-                        val strokePx = 24.dp.toPx()
-                        var currentStartAngle = -90f
-                        val gapAngle = 3f
-                        val totalApps = topApps.take(6)
-                        val totalAppTime = totalApps.sumOf { it.usageTimeMs }.toFloat()
-
-                        totalApps.forEachIndexed { index, app ->
-                            val color = DonutChartColors[index % DonutChartColors.size]
-                            val fraction = (app.usageTimeMs.toFloat() / totalAppTime)
-                            val rawSweep = fraction * 360f
-                            val sweepAngle = (rawSweep - gapAngle).coerceAtLeast(1.5f)
-
-                            drawArc(
-                                color = color,
-                                startAngle = currentStartAngle + (gapAngle / 2f),
-                                sweepAngle = sweepAngle,
-                                useCenter = false,
-                                style = Stroke(width = strokePx, cap = StrokeCap.Round)
-                            )
-                            currentStartAngle += rawSweep
-                        }
-                    }
-
-                    // Center information
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${topApps.size}",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "apps",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    topApps.take(4).forEachIndexed { index, app ->
+                        val weight = (app.usageTimeMs.toFloat() / totalAppTime).coerceAtLeast(0.02f)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .weight(weight)
+                                .background(allocationColors.getOrElse(index) { Color(0xFF8A9E92) })
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                // Chart Legend (Top 3 apps)
-                Row(
+                // Top 3 Apps Breakdown Rows with clean proportion tags
+                val displayTop = topApps.take(3)
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    val previewApps = topApps.take(3)
-                    previewApps.forEachIndexed { index, app ->
-                        val color = DonutChartColors[index % DonutChartColors.size]
+                    displayTop.forEachIndexed { index, app ->
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 6.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(allocationColors.getOrElse(index) { Color(0xFF8A9E92) })
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = app.appName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             Text(
-                                text = app.appName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                text = TimeFormatUtils.formatScreenTime(app.usageTimeMs),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
