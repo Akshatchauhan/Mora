@@ -54,18 +54,20 @@ object TaskDomainRules {
         newTitle: String,
         newDescription: String,
         requestedDeadlineTimestamp: Long,
-        requirePhotoProof: Boolean,
-        effectivePhotoPath: String?,
-        isHostageModeEnabled: Boolean,
+        requirePhotoProof: Boolean = false,
+        effectivePhotoPath: String? = null,
+        isHostageModeEnabled: Boolean = false,
         priority: TaskPriority = existingTask.priority,
-        nowMs: Long = System.currentTimeMillis()
+        nowMs: Long = System.currentTimeMillis(),
+        canEditDeadline: Boolean = true
     ): Task {
         val isAlreadyCompleted = existingTask.status == TaskStatus.COMPLETED
-        val finalDeadline = if (isAlreadyCompleted) {
+        val finalDeadline = if (!canEditDeadline || isAlreadyCompleted) {
             existingTask.deadlineTimestamp
         } else {
             requestedDeadlineTimestamp
         }
+        val finalPriority = if (canEditDeadline) priority else existingTask.priority
         val finalStatus = determineStatusForDeadline(
             currentStatus = existingTask.status,
             deadlineTimestamp = finalDeadline,
@@ -75,7 +77,7 @@ object TaskDomainRules {
             title = newTitle.trim(),
             description = newDescription.trim(),
             deadlineTimestamp = finalDeadline,
-            priority = priority,
+            priority = finalPriority,
             requirePhotoProof = requirePhotoProof,
             photoPath = effectivePhotoPath,
             isHostageModeEnabled = isHostageModeEnabled,

@@ -35,6 +35,7 @@ object NotificationHelper {
     const val CHANNEL_ALARM_DESC = "Audible alarm alert ringing when a task deadline has passed without completion."
 
     const val ONGOING_NOTIFICATION_ID = 1003
+    const val NOTIFICATION_ID_DAILY_CHECKIN = 1005
     private const val ALARM_NOTIFICATION_PREFIX = 4000
 
     fun createNotificationChannels(context: Context) {
@@ -200,11 +201,20 @@ object NotificationHelper {
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
         val deadlineStr = formatTimeOrDate(task.deadlineTimestamp)
-        val notification = NotificationCompat.Builder(context, CHANNEL_ALARM_ID)
+        val isStrictMode = prefs.appInteractionMode == com.example.dueordie.util.AppInteractionMode.STRICT
+        val title = "Overdue: ${task.title}"
+        val body = "Deadline passed ($deadlineStr)."
+        val bigBody = if (isStrictMode) {
+            "The deadline for \"${task.title}\" passed ($deadlineStr). Focus Lock is active."
+        } else {
+            "The deadline for \"${task.title}\" passed ($deadlineStr)."
+        }
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ALARM_ID)
             .setSmallIcon(R.drawable.ic_nav_tasks)
-            .setContentTitle("Overdue: ${task.title} [${task.priority.displayName}]")
-            .setContentText("Deadline passed ($deadlineStr). Reschedule (+1h).")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("The deadline for \"${task.title}\" [${task.priority.displayName}] passed ($deadlineStr). Reschedule (+1h)."))
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigBody))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setSound(alarmSound)
@@ -212,18 +222,24 @@ object NotificationHelper {
             .setAutoCancel(false)
             .setOngoing(true)
             .setContentIntent(contentPendingIntent)
-            .addAction(0, "Reschedule (+1h)", reschedulePendingIntent)
-            .addAction(0, "Silence", silencePendingIntent)
-            .build()
+
+        if (!isStrictMode) {
+            builder.addAction(0, "Reschedule (+1h)", reschedulePendingIntent)
+        }
+        builder.addAction(0, "Silence", silencePendingIntent)
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(notificationId, notification)
+        // Cancel any pending due-soon reminders for this task so notifications do not stack
+        notificationManager.cancel(task.id.toInt() + 2000)
+        notificationManager.cancel(1002)
+        notificationManager.notify(notificationId, builder.build())
     }
 
     fun cancelOverdueAlarmNotification(context: Context, taskId: Long) {
         val notificationId = (ALARM_NOTIFICATION_PREFIX + (taskId % 10000)).toInt()
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(notificationId)
+        OnboardingPreferences(context).clearOverdueAlarmShown(taskId)
     }
 
     /**

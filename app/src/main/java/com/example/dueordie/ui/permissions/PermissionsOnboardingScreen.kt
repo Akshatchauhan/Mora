@@ -410,7 +410,7 @@ fun PermissionsOnboardingScreen(
                                 Spacer(modifier = Modifier.height(6.dp))
 
                                 Text(
-                                    text = "Take two slow breaths before opening distracting apps you choose in Settings.",
+                                    text = "Take a mindful pause before opening apps you choose in Settings.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

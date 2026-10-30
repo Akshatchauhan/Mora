@@ -8,6 +8,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.dueordie.data.local.TaskDao
 import com.example.dueordie.worker.NotionSyncWorker
+import com.example.dueordie.service.DeadlineAlarmScheduler
+import com.example.dueordie.util.OnboardingPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -128,6 +130,11 @@ class NotionSyncManager(
             }
         }
         if (changed) {
+            DeadlineAlarmScheduler.scheduleNext(
+                context = appContext,
+                tasks = taskDao.getAllTasksOneShot(),
+                enabled = OnboardingPreferences(appContext).isOverdueAlarmEnabled
+            )
             com.example.dueordie.service.OngoingNotificationService.startOrUpdate(appContext)
             com.example.dueordie.widget.DueOrDieWidgetProvider.updateAllWidgets(appContext)
         }

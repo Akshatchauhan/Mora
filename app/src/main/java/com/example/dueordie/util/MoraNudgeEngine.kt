@@ -41,7 +41,7 @@ object MoraNudgeEngine {
             )
             else -> MoraNudgeCopy(
                 headline = "Pause before $appLabel",
-                subtext = "${nextTask.title} is on today's plan. Take two slow breaths before deciding.",
+                subtext = "${nextTask.title} is on today's plan. Pause and breathe before deciding.",
                 badgeText = "Mindful pause"
             )
         }

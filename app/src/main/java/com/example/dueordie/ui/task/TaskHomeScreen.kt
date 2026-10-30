@@ -27,6 +27,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Velocity
 import com.example.dueordie.R
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -71,6 +72,7 @@ import androidx.compose.material.icons.rounded.LockClock
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -96,11 +98,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -116,6 +122,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.dueordie.data.model.InteractionModePolicy
 import com.example.dueordie.data.model.Task
 import com.example.dueordie.data.model.TaskStatus
 import com.example.dueordie.data.model.UrgencyLevel
@@ -123,6 +130,9 @@ import com.example.dueordie.ui.theme.SemanticSuccessGreen
 import com.example.dueordie.ui.theme.SemanticWarningAmber
 import com.example.dueordie.util.MoraHaptics
 import com.example.dueordie.util.TimeFormatUtils
+import com.example.dueordie.util.AppInteractionMode
+import com.example.dueordie.util.OnboardingPreferences
+import com.microsoft.clarity.modifiers.clarityMask
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -140,6 +150,7 @@ fun TaskHomeScreen(
     val context = LocalContext.current
     val onboardingPrefs = remember { com.example.dueordie.util.OnboardingPreferences(context) }
     val uiState by viewModel.uiState.collectAsState()
+    val interactionMode by OnboardingPreferences.interactionModeFlow.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var showTour by remember {
@@ -267,7 +278,7 @@ fun TaskHomeScreen(
             contentPadding = PaddingValues(bottom = navBarBottom + 100.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header: "Tasks" title on left, Settings gear on right
+            // Header: "Tasks" title on left with discreet mode badge, Settings gear on right
             item(key = "tasks-header") {
                 Row(
                     modifier = Modifier
@@ -276,24 +287,67 @@ fun TaskHomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Tasks",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 32.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    IconButton(
-                        onClick = onNavigateToPermissions,
-                        modifier = Modifier.size(40.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_nav_settings),
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
+                        Text(
+                            text = "Tasks",
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 32.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (interactionMode == AppInteractionMode.STRICT) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (interactionMode == AppInteractionMode.STRICT) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                }
+                            )
+                        ) {
+                            Text(
+                                text = if (interactionMode == AppInteractionMode.STRICT) "Strict" else "Casual",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = if (interactionMode == AppInteractionMode.STRICT) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick = onNavigateToPermissions,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        shadowElevation = 0.dp,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -385,6 +439,7 @@ fun TaskHomeScreen(
                     SwipeableTaskCard(
                         task = task,
                         currentTimeMs = liveNowMs,
+                        interactionMode = interactionMode,
                         onToggleStatus = { viewModel.toggleTaskStatus(task) },
                         onEditClick = { viewModel.openEditTaskDialog(task) },
                         onDeleteTask = { viewModel.deleteTask(task) },
@@ -394,15 +449,15 @@ fun TaskHomeScreen(
             }
         }
 
-        // Snapchat-style pull down indicator at top of screen
+        // iOS-style liquid pull down refresh indicator at top of screen
         if (isNotionConnected) {
-            SnapchatNotionPullIndicator(
+            IosLiquidSyncIndicator(
                 offsetPx = animatedPullOffset,
                 maxOffsetPx = pullThresholdPx,
                 isSyncing = isNotionSyncing,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = statusBarTop + 8.dp)
+                    .padding(top = statusBarTop + 6.dp)
             )
         }
 
@@ -545,8 +600,14 @@ private fun TaskFilterRow(
  * - Swipe left reveals red "Hold to delete" button
  * - Tap and hold anywhere on the whole card to mark complete
  */
+/**
+ * iOS 26 style liquid pull-to-refresh indicator:
+ * - Zero branded logo icons (pure fluid activity arc and spinner)
+ * - Elastic dynamic pill capsule
+ * - Interactive draw arc on pull, silky spinner on sync
+ */
 @Composable
-private fun SnapchatNotionPullIndicator(
+private fun IosLiquidSyncIndicator(
     offsetPx: Float,
     maxOffsetPx: Float,
     isSyncing: Boolean,
@@ -555,24 +616,14 @@ private fun SnapchatNotionPullIndicator(
     if (offsetPx <= 4f && !isSyncing) return
 
     val progress = (offsetPx / maxOffsetPx).coerceIn(0f, 1f)
-    val scale = (0.65f + progress * 0.35f).coerceIn(0.65f, 1f)
-    val alpha = (progress * 1.5f).coerceIn(0f, 1f)
-
-    val infiniteTransition = rememberInfiniteTransition(label = "notionSpin")
-    val spinRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = androidx.compose.animation.core.LinearEasing)
-        ),
-        label = "spin"
-    )
-
-    val iconRotation = if (isSyncing) spinRotation else (progress * 360f)
+    val scale = (0.75f + progress * 0.25f).coerceIn(0.75f, 1f)
+    val alpha = (progress * 1.6f).coerceIn(0f, 1f)
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
 
     Box(
         modifier = modifier
-            .offset { IntOffset(0, (offsetPx * 0.5f).toInt()) }
+            .offset { IntOffset(0, (offsetPx * 0.42f).toInt()) }
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -584,7 +635,7 @@ private fun SnapchatNotionPullIndicator(
             shape = RoundedCornerShape(999.dp),
             color = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp),
             shadowElevation = 8.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -592,31 +643,43 @@ private fun SnapchatNotionPullIndicator(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(18.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isSyncing) {
                         CircularProgressIndicator(
                             strokeWidth = 2.dp,
-                            modifier = Modifier.size(22.dp),
-                            color = MaterialTheme.colorScheme.primary
+                            modifier = Modifier.size(16.dp),
+                            color = primaryColor,
+                            trackColor = trackColor,
+                            strokeCap = StrokeCap.Round
                         )
+                    } else {
+                        Canvas(modifier = Modifier.size(16.dp)) {
+                            val strokeWidth = 2.dp.toPx()
+                            drawArc(
+                                color = trackColor,
+                                startAngle = 0f,
+                                sweepAngle = 360f,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth)
+                            )
+                            drawArc(
+                                color = primaryColor,
+                                startAngle = -90f,
+                                sweepAngle = (progress * 360f).coerceIn(0f, 360f),
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                        }
                     }
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_notion),
-                        contentDescription = "Notion",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .graphicsLayer { rotationZ = iconRotation }
-                    )
                 }
 
                 Text(
                     text = when {
-                        isSyncing -> "Syncing Notion..."
-                        progress >= 1f -> "Release to sync Notion"
-                        else -> "Pull to sync Notion"
+                        isSyncing -> "Syncing..."
+                        progress >= 1f -> "Release to sync"
+                        else -> "Pull to sync"
                     },
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold,
@@ -640,6 +703,7 @@ private fun SnapchatNotionPullIndicator(
 private fun SwipeableTaskCard(
     task: Task,
     currentTimeMs: Long,
+    interactionMode: AppInteractionMode,
     onToggleStatus: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteTask: () -> Unit,
@@ -660,7 +724,10 @@ private fun SwipeableTaskCard(
     var holdProgress by remember(task.id) { mutableFloatStateOf(0f) }
     val isCompleted = task.status == TaskStatus.COMPLETED
     val isOverdue = !isCompleted && task.isOverdueAt(currentTimeMs)
-    val holdDuration = if (isOverdue) 2_400L else 1_400L
+
+    val canEdit = InteractionModePolicy.canEditTask(interactionMode, isTaskSaved = true)
+    val isHoldRequired = InteractionModePolicy.isHoldToCompleteRequired(interactionMode)
+    val holdDuration = InteractionModePolicy.getRequiredHoldDurationMs(interactionMode)
 
     Box(
         modifier = modifier
@@ -675,31 +742,35 @@ private fun SwipeableTaskCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Edit on left
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(96.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+            // Edit on left (Only shown if mode policy permits editing)
+            if (canEdit) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(96.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = "Edit",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Edit",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = "Edit",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Edit",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
+            } else {
+                Spacer(modifier = Modifier.width(1.dp))
             }
 
             // Hold to delete button on right (only shown when deletion is allowed on task page)
@@ -731,34 +802,39 @@ private fun SwipeableTaskCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .offset { IntOffset(offsetX.value.toInt(), 0) }
-                .pointerInput(task.id, isCompleted, isDeleteDisabled) {
+                .pointerInput(task.id, isCompleted, isDeleteDisabled, interactionMode) {
                     val touchSlop = viewConfiguration.touchSlop
                     val movementThreshold = with(density) { 6.dp.toPx() }
+                    val checkboxZonePx = with(density) { 60.dp.toPx() }
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startPos = down.position
+                        val isCheckboxTouch = startPos.x < checkboxZonePx
                         val startedAt = SystemClock.elapsedRealtime()
                         var isDragging = false
                         var isHoldCompleted = false
 
-                        val holdJob = coroutineScope.launch {
-                            delay(280L) // Stationary deadzone so swiping or tapping never starts hold timer
-                            if (isDragging) return@launch
-                            val holdStart = SystemClock.elapsedRealtime()
-                            while (isActive && !isDragging) {
-                                val elapsed = SystemClock.elapsedRealtime() - holdStart
-                                holdProgress = (elapsed.toFloat() / (holdDuration - 280L)).coerceIn(0f, 1f)
-                                haptics.onHoldToCompleteProgress(holdProgress)
-                                if (elapsed >= (holdDuration - 280L)) {
-                                    isHoldCompleted = true
-                                    holdProgress = 1f
-                                    haptics.onHoldTaskCompleted()
-                                    onToggleStatus()
-                                    break
+                        val holdJob = if (isHoldRequired && !isCompleted) {
+                            coroutineScope.launch {
+                                delay(200L) // Stationary deadzone
+                                if (isDragging) return@launch
+                                val holdStart = SystemClock.elapsedRealtime()
+                                val effectiveHoldTime = (holdDuration - 200L).coerceAtLeast(1L)
+                                while (isActive && !isDragging) {
+                                    val elapsed = SystemClock.elapsedRealtime() - holdStart
+                                    holdProgress = (elapsed.toFloat() / effectiveHoldTime).coerceIn(0f, 1f)
+                                    haptics.onHoldToCompleteProgress(holdProgress)
+                                    if (elapsed >= effectiveHoldTime) {
+                                        isHoldCompleted = true
+                                        holdProgress = 1f
+                                        haptics.onHoldTaskCompleted()
+                                        onToggleStatus()
+                                        break
+                                    }
+                                    delay(16L)
                                 }
-                                delay(16L)
                             }
-                        }
+                        } else null
 
                         while (true) {
                             val event = awaitPointerEvent()
@@ -766,10 +842,10 @@ private fun SwipeableTaskCard(
 
                             if (!pointer.pressed) {
                                 // Finger lifted
-                                holdJob.cancel()
+                                holdJob?.cancel()
                                 if (isDragging) {
                                     coroutineScope.launch {
-                                        if (offsetX.value > swipeEditThresholdPx) {
+                                        if (canEdit && offsetX.value > swipeEditThresholdPx) {
                                             offsetX.animateTo(0f)
                                             isDeleteRevealed = false
                                             onEditClick()
@@ -790,7 +866,10 @@ private fun SwipeableTaskCard(
                                                 isDeleteRevealed = false
                                             }
                                         }
-                                        // Tapping does NOT open task edit page!
+                                        // If tap was in checkbox area, HoldToCompleteCheckbox handled completion
+                                        if (!isCheckboxTouch && canEdit) {
+                                            onEditClick()
+                                        }
                                     }
                                 }
                                 if (holdProgress > 0.1f && !isHoldCompleted) {
@@ -806,7 +885,7 @@ private fun SwipeableTaskCard(
 
                             // Cancel hold timer immediately upon ANY slight movement
                             if (totalDistance > movementThreshold && !isHoldCompleted) {
-                                holdJob.cancel()
+                                holdJob?.cancel()
                                 if (holdProgress > 0f) {
                                     holdProgress = 0f
                                     haptics.onHoldCancelled()
@@ -817,12 +896,12 @@ private fun SwipeableTaskCard(
                                 if (kotlin.math.abs(deltaX) > touchSlop) {
                                     // Horizontal swipe detected
                                     isDragging = true
-                                    holdJob.cancel()
+                                    holdJob?.cancel()
                                     holdProgress = 0f
                                     pointer.consume()
                                 } else if (kotlin.math.abs(deltaY) > touchSlop) {
                                     // Vertical scroll detected
-                                    holdJob.cancel()
+                                    holdJob?.cancel()
                                     holdProgress = 0f
                                     break
                                 }
@@ -830,8 +909,8 @@ private fun SwipeableTaskCard(
                                 pointer.consume()
                                 val baseOffset = if (isDeleteRevealed) -swipeRevealPx else 0f
                                 val minOffset = if (isDeleteDisabled) 0f else -swipeRevealPx * 1.25f
-                                val newOffset = (baseOffset + deltaX)
-                                    .coerceIn(minOffset, swipeEditThresholdPx * 1.25f)
+                                val maxOffset = if (canEdit) swipeEditThresholdPx * 1.25f else 0f
+                                val newOffset = (baseOffset + deltaX).coerceIn(minOffset, maxOffset)
                                 coroutineScope.launch {
                                     offsetX.snapTo(newOffset)
                                 }
@@ -844,6 +923,7 @@ private fun SwipeableTaskCard(
                 task = task,
                 currentTimeMs = currentTimeMs,
                 holdProgress = holdProgress,
+                interactionMode = interactionMode,
                 onToggleStatus = onToggleStatus
             )
         }
@@ -935,6 +1015,7 @@ private fun TaskItemCardContent(
     task: Task,
     currentTimeMs: Long,
     holdProgress: Float,
+    interactionMode: AppInteractionMode,
     onToggleStatus: () -> Unit
 ) {
     val isCompleted = task.status == TaskStatus.COMPLETED
@@ -942,9 +1023,9 @@ private fun TaskItemCardContent(
     val isOverdue = !isCompleted && task.isOverdueAt(currentTimeMs)
 
     val statusColor = when {
-        isCompleted -> SemanticSuccessGreen
+        isCompleted -> MaterialTheme.colorScheme.primary
         isOverdue -> MaterialTheme.colorScheme.error
-        urgency == UrgencyLevel.CRITICAL || urgency == UrgencyLevel.HIGH -> SemanticWarningAmber
+        urgency == UrgencyLevel.CRITICAL || urgency == UrgencyLevel.HIGH -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.primary
     }
 
@@ -987,13 +1068,16 @@ private fun TaskItemCardContent(
                 overdue = isOverdue,
                 completed = isCompleted,
                 externalProgress = holdProgress,
+                interactionMode = interactionMode,
                 onClick = onToggleStatus
             )
+
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(top = 4.dp)
+                    .align(Alignment.CenterVertically)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1003,8 +1087,7 @@ private fun TaskItemCardContent(
                     Text(
                         text = task.title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                            fontWeight = FontWeight.SemiBold
                         ),
                         color = if (isCompleted) {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -1013,7 +1096,10 @@ private fun TaskItemCardContent(
                         },
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                            .clarityMask()
                     )
 
                     Row(
@@ -1066,7 +1152,8 @@ private fun TaskItemCardContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clarityMask()
                     )
                 }
 
@@ -1108,73 +1195,27 @@ private fun TaskItemCardContent(
                     )
                 }
 
-                if (task.requirePhotoProof || !task.photoPath.isNullOrBlank() || task.isHostageModeEnabled) {
+                if (task.isHostageModeEnabled) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (!task.photoPath.isNullOrBlank()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Photo,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Photo attached",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        } else if (task.requirePhotoProof) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.CameraAlt,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Optional photo",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        if (task.isHostageModeEnabled) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.LockClock,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Focus lock",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.LockClock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Focus lock",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-                }
-
-                if (!task.photoPath.isNullOrBlank() && File(task.photoPath).exists()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AsyncImage(
-                        model = File(task.photoPath),
-                        contentDescription = "Task photo attachment",
-                        modifier = Modifier
-                            .height(72.dp)
-                            .clip(RoundedCornerShape(14.dp)),
-                        contentScale = ContentScale.Crop
-                    )
                 }
             }
         }
@@ -1186,10 +1227,12 @@ private fun HoldToCompleteCheckbox(
     overdue: Boolean,
     completed: Boolean,
     externalProgress: Float,
+    interactionMode: AppInteractionMode,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
     val haptics = remember(context) { MoraHaptics(context) }
+    val isStrict = interactionMode == AppInteractionMode.STRICT
     val checkScale = remember { androidx.compose.animation.core.Animatable(1f) }
     val ringColor = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
@@ -1214,9 +1257,21 @@ private fun HoldToCompleteCheckbox(
         }
     }
 
+    val actionDescription = if (completed) "Task completed" else if (isStrict) "Hold to complete task" else "Mark task complete"
+
     Box(
         modifier = Modifier
             .size(48.dp)
+            .semantics(mergeDescendants = true) {
+                role = Role.Checkbox
+                contentDescription = actionDescription
+                customActions = listOf(
+                    CustomAccessibilityAction(if (completed) "Reopen task" else "Complete task") {
+                        onClick()
+                        true
+                    }
+                )
+            }
             .graphicsLayer {
                 scaleX = checkScale.value
                 scaleY = checkScale.value
@@ -1225,10 +1280,15 @@ private fun HoldToCompleteCheckbox(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {
-                    if (!completed) {
-                        haptics.onHoldTaskCompleted()
+                    if (!isStrict || completed) {
+                        if (!completed) {
+                            haptics.onHoldTaskCompleted()
+                        }
+                        onClick()
+                    } else {
+                        // Strict mode: inform user with haptic tick that hold is required
+                        haptics.onTick()
                     }
-                    onClick()
                 }
             ),
         contentAlignment = Alignment.Center
@@ -1244,8 +1304,8 @@ private fun HoldToCompleteCheckbox(
         }
         Icon(
             imageVector = if (completed) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-            contentDescription = if (completed) "Task completed" else "Mark task complete",
-            tint = if (completed) SemanticSuccessGreen else ringColor.copy(alpha = 0.85f),
+            contentDescription = null,
+            tint = if (completed) MaterialTheme.colorScheme.primary else ringColor.copy(alpha = 0.85f),
             modifier = Modifier.size(24.dp)
         )
     }

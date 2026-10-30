@@ -160,6 +160,18 @@ class MoraHaptics(context: Context) {
         vibrateOneShot(vib, 15L, 45)
     }
 
+    fun onTick() {
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        vibrateOneShot(vib, 12L, 40)
+    }
+
+    companion object {
+        fun performHapticTick(context: Context) {
+            MoraHaptics(context).onTick()
+        }
+    }
+
     fun cancel() {
         runCatching { vibrator?.cancel() }
     }

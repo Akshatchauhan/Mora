@@ -69,14 +69,14 @@ class NotionPayloadMapperTest {
         assertEquals(today + 24 * 60 * 60 * 1000L + 14 * 60 * 60 * 1000L + 30 * 60_000L, merged.deadlineTimestamp)
     }
 
-    @Test fun dateOnlyEditPreservesLocalTimeAndRemoteTaskEnablesFocusLockByDefault() {
+    @Test fun dateOnlyEditPreservesLocalTimeAndRemoteTaskDoesNotEnableFocusLockByDefault() {
         val local = Task(id = 8, title = "Existing", deadlineTimestamp = today + 14 * 60 * 60 * 1000L + 30 * 60_000L)
         val dateOnly = parseRemote("⏳ Not Today (Later)", "2024-05-16")
         val merged = NotionPayloadMapper.reconcileRemoteTaskWithLocal(dateOnly, local, now, zone)
         assertEquals(today + 24 * 60 * 60 * 1000L + 14 * 60 * 60 * 1000L + 30 * 60_000L, merged.deadlineTimestamp)
 
         val newTask = NotionPayloadMapper.reconcileRemoteTaskWithLocal(dateOnly, null, now, zone)
-        assertTrue(newTask.isHostageModeEnabled)
+        assertFalse(newTask.isHostageModeEnabled)
         assertFalse(newTask.notionSyncDirty)
     }
 

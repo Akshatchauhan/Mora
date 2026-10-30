@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -46,6 +47,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -93,237 +98,38 @@ fun MindfulPausePreviewDialog(
     playPingOnStart: Boolean = false,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    val haptics = remember(context) { MoraHaptics(context) }
-    val reducedMotion = remember { PermissionHelper.isReducedMotionEnabled(context) }
-    val cycleCount = OnboardingPreferences.durationSecondsToCycles(durationSeconds).coerceIn(1, 4)
-    val effectiveDurationSeconds = OnboardingPreferences.cyclesToDurationSeconds(cycleCount)
-    val cycleDurationMs = (effectiveDurationSeconds * 1000L) / cycleCount
-    val inhaleMs = (cycleDurationMs * 0.46f).toLong().toInt()
-    val holdMs = (cycleDurationMs * 0.04f).toLong().toInt()
-    val exhaleMs = (cycleDurationMs * 0.46f).toLong().toInt()
-    val restMs = (cycleDurationMs * 0.04f).toLong().toInt()
-
-    val circleScale = remember { Animatable(0.75f) }
-    var currentCycle by remember(durationSeconds) { mutableIntStateOf(1) }
-    var phaseText by remember(durationSeconds) { mutableStateOf("Breathe in") }
-    var isExhaling by remember(durationSeconds) { mutableStateOf(false) }
-    var isBreathingComplete by remember(durationSeconds) { mutableStateOf(false) }
-
-    LaunchedEffect(durationSeconds, playPingOnStart) {
-        if (playPingOnStart) PausePing.play(context)
-        isBreathingComplete = false
-        phaseText = "Breathe in"
-        currentCycle = 1
-        isExhaling = false
-        circleScale.snapTo(0.75f)
-
-        for (cycle in 1..cycleCount) {
-            currentCycle = cycle
-
-            // 1. Inhale
-            phaseText = "Breathe in"
-            isExhaling = false
-            if (reducedMotion) {
-                delay(inhaleMs.toLong())
-            } else {
-                circleScale.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(
-                        durationMillis = inhaleMs,
-                        easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
-                    )
-                ) {
-                    val p = ((value - 0.75f) / 0.25f).coerceIn(0f, 1f)
-                    haptics.onBreathingFrame(p, isInhale = true)
-                }
-            }
-
-            if (holdMs > 0) delay(holdMs.toLong())
-
-            // 2. Exhale
-            phaseText = "Breathe out"
-            isExhaling = true
-            if (reducedMotion) {
-                delay(exhaleMs.toLong())
-            } else {
-                circleScale.animateTo(
-                    targetValue = 0.75f,
-                    animationSpec = tween(
-                        durationMillis = exhaleMs,
-                        easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
-                    )
-                ) {
-                    val p = ((1f - value) / 0.25f).coerceIn(0f, 1f)
-                    haptics.onBreathingFrame(p, isInhale = false)
-                }
-            }
-
-            if (restMs > 0) delay(restMs.toLong())
-        }
-
-        phaseText = "Ready"
-        isBreathingComplete = true
-        haptics.onBreathingCycleComplete()
-    }
-
-    val progress = if (!isExhaling) {
-        ((circleScale.value - 0.75f) / 0.25f).coerceIn(0f, 1f)
-    } else {
-        ((1f - circleScale.value) / 0.25f).coerceIn(0f, 1f)
-    }
-    val particleColor = MaterialTheme.colorScheme.primary
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
-            dismissOnClickOutside = false
+            dismissOnClickOutside = false,
+            decorFitsSystemWindows = false
         )
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 28.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier
-                        .widthIn(max = 420.dp)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Pause preview",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-
-                    val effectivePrompt = remember(promptText) {
-                        if (promptText.isNotBlank() && promptText != OnboardingPreferences.DEFAULT_PAUSE_PROMPT) {
-                            promptText
-                        } else {
-                            com.example.dueordie.util.MindfulPrompts.getRandomPrompt()
-                        }
-                    }
-
-                    if (effectivePrompt.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = effectivePrompt,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                lineHeight = 24.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .size(168.dp)
-                            .semantics {
-                                liveRegion = LiveRegionMode.Polite
-                                contentDescription = if (isBreathingComplete) {
-                                    "$cycleCount breathing cycle${if (cycleCount > 1) "s" else ""} complete. Choose Continue or dismiss."
-                                } else {
-                                    "Cycle $currentCycle of $cycleCount. $phaseText"
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (!reducedMotion && !isBreathingComplete) {
-                            Canvas(Modifier.fillMaxSize().zIndex(1f)) {
-                                val center = Offset(size.width / 2f, size.height / 2f)
-                                val outerRadius = size.minDimension * 0.43f
-                                repeat(10) { index ->
-                                    val angle = (2.0 * PI * index / 10.0) + (progress * 0.12 * if (!isExhaling) -1 else 1)
-                                    val radius = outerRadius * if (!isExhaling) {
-                                        0.98f - 0.36f * progress
-                                    } else {
-                                        0.62f + 0.36f * progress
-                                    }
-                                    drawCircle(
-                                        color = particleColor.copy(alpha = 0.25f + (index % 3) * 0.08f),
-                                        radius = (2.0f + (index % 3) * 0.7f) * density,
-                                        center = Offset(center.x + cos(angle).toFloat() * radius, center.y + sin(angle).toFloat() * radius)
-                                    )
-                                }
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(152.dp)
-                                .graphicsLayer {
-                                    scaleX = circleScale.value
-                                    scaleY = circleScale.value
-                                }
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                        )
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.align(Alignment.Center)
-                        ) {
-                            Text(
-                                text = phaseText,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (isBreathingComplete) "Choose below" else "Cycle $currentCycle of $cycleCount",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(36.dp))
-
-                    AnimatedVisibility(
-                        visible = isBreathingComplete,
-                        modifier = Modifier.heightIn(min = 52.dp),
-                        enter = fadeIn(tween(650))
-                    ) {
-                        Button(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(999.dp),
-                            modifier = Modifier.wrapContentWidth().widthIn(min = 140.dp).heightIn(min = 48.dp)
-                        ) {
-                            Text("Continue", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(999.dp),
-                        modifier = Modifier.wrapContentWidth().widthIn(min = 140.dp).heightIn(min = 48.dp)
-                    ) {
-                        Text(
-                            text = "Dismiss",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                    }
-                }
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            dialogWindow?.let { win ->
+                win.setLayout(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT
+                )
+                win.setBackgroundDrawableResource(android.R.color.transparent)
+                win.setDimAmount(0f)
+                win.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
             }
         }
+        DynamicMindfulPauseContent(
+            targetPackage = "preview",
+            promptText = promptText,
+            durationSeconds = durationSeconds,
+            isStrictDailyLimitReached = false,
+            dailyScreenTimeMinutes = 22L,
+            dailyScreenTimeLimitMinutes = 30,
+            onContinueToApp = onDismiss,
+            onStepAwayToTasks = onDismiss,
+            onDismiss = onDismiss
+        )
     }
 }
 
@@ -334,6 +140,8 @@ fun AccessibilityDisclosureDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDecline,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
         title = {
             Text(
                 text = "App launch detection",
@@ -388,6 +196,8 @@ fun PausePromptDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
         title = {
             Text(
                 text = "Pause prompt",
@@ -540,8 +350,9 @@ fun SelectPauseAppsDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
                 .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
             tonalElevation = 2.dp
         ) {
             Column(
@@ -558,7 +369,7 @@ fun SelectPauseAppsDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "${selectedPackages.size} selected. Take two slow breaths before opening these apps.",
+                    text = "${selectedPackages.size} selected. Take a mindful pause before opening these apps.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -608,7 +419,7 @@ fun SelectPauseAppsDialog(
                         )
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(999.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 

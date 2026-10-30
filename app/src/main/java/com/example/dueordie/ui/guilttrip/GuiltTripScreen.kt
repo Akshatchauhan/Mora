@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.Button
@@ -67,6 +68,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import com.microsoft.clarity.modifiers.clarityMask
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -135,16 +137,22 @@ fun GuiltTripScreen(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
                     Text(
                         text = "Balance",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 32.sp
                         ),
                         color = MaterialTheme.colorScheme.onBackground
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "Mindful limits & screen balance",
                         style = MaterialTheme.typography.bodyMedium,
@@ -153,6 +161,7 @@ fun GuiltTripScreen(
                 }
 
                 Row(
+                    modifier = Modifier.height(42.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -203,17 +212,26 @@ fun GuiltTripScreen(
                         )
                     }
 
-                    // Settings Gear Button
-                    IconButton(
+                    // Settings Gear Button in clean circle container
+                    Surface(
                         onClick = onNavigateToSettings,
-                        modifier = Modifier.size(38.dp)
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        shadowElevation = 0.dp,
+                        modifier = Modifier.size(42.dp)
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_nav_settings),
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -511,7 +529,8 @@ private fun BalanceOverviewCard(
                     fontSize = 36.sp,
                     letterSpacing = (-0.5).sp
                 ),
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.clarityMask()
             )
 
             if (!isUsageTrackingEnabled || !isPermissionGranted) {
@@ -603,13 +622,15 @@ private fun BalanceOverviewCard(
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.clarityMask()
                                 )
                             }
                             Text(
                                 text = TimeFormatUtils.formatScreenTime(app.usageTimeMs),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clarityMask()
                             )
                         }
                     }

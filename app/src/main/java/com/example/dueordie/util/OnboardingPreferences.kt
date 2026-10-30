@@ -19,6 +19,17 @@ enum class AppThemeMode(val storageValue: String, val displayLabel: String) {
     }
 }
 
+enum class AppInteractionMode(val storageValue: String, val displayLabel: String) {
+    STRICT("strict", "Strict"),
+    CASUAL("casual", "Casual");
+
+    companion object {
+        fun fromStorage(value: String?): AppInteractionMode {
+            return entries.firstOrNull { it.storageValue == value } ?: CASUAL
+        }
+    }
+}
+
 class OnboardingPreferences(context: Context) {
 
     private val prefs: SharedPreferences =
@@ -29,6 +40,7 @@ class OnboardingPreferences(context: Context) {
             prefs.edit().putInt(KEY_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION).apply()
         }
         syncThemeFlow(themeMode)
+        syncInteractionModeFlow(appInteractionMode)
     }
 
     val schemaVersion: Int
@@ -44,6 +56,17 @@ class OnboardingPreferences(context: Context) {
             prefs.edit().putString(KEY_THEME_MODE, value.storageValue).apply()
             syncThemeFlow(value)
         }
+
+    var appInteractionMode: AppInteractionMode
+        get() = AppInteractionMode.fromStorage(prefs.getString(KEY_APP_INTERACTION_MODE, AppInteractionMode.CASUAL.storageValue))
+        set(value) {
+            prefs.edit().putString(KEY_APP_INTERACTION_MODE, value.storageValue).apply()
+            syncInteractionModeFlow(value)
+        }
+
+    var dailyChosenAppsLimitMinutes: Int
+        get() = prefs.getInt(KEY_DAILY_CHOSEN_APPS_LIMIT_MINUTES, DEFAULT_DAILY_CHOSEN_APPS_LIMIT_MINUTES).coerceIn(15, 120)
+        set(value) = prefs.edit().putInt(KEY_DAILY_CHOSEN_APPS_LIMIT_MINUTES, value.coerceIn(15, 120)).apply()
 
     var isPausePingEnabled: Boolean
         get() = prefs.getBoolean(KEY_PAUSE_PING_ENABLED, false)
@@ -64,6 +87,17 @@ class OnboardingPreferences(context: Context) {
     var isOverdueAlarmEnabled: Boolean
         get() = prefs.getBoolean(KEY_OVERDUE_ALARM_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_OVERDUE_ALARM_ENABLED, value).apply()
+
+    fun wasOverdueAlarmShown(taskId: Long, deadlineTimestamp: Long): Boolean =
+        prefs.getLong(KEY_ALARMED_DEADLINE_PREFIX + taskId, Long.MIN_VALUE) == deadlineTimestamp
+
+    fun markOverdueAlarmShown(taskId: Long, deadlineTimestamp: Long) {
+        prefs.edit().putLong(KEY_ALARMED_DEADLINE_PREFIX + taskId, deadlineTimestamp).apply()
+    }
+
+    fun clearOverdueAlarmShown(taskId: Long) {
+        prefs.edit().remove(KEY_ALARMED_DEADLINE_PREFIX + taskId).apply()
+    }
 
     var isUsageTrackingEnabled: Boolean
         get() = prefs.getBoolean(KEY_USAGE_TRACKING_ENABLED, false)
@@ -173,6 +207,10 @@ class OnboardingPreferences(context: Context) {
         get() = prefs.getStringSet(KEY_BLOCKED_PACKAGES, null) ?: defaultBlockedPackages
         set(value) = prefs.edit().putStringSet(KEY_BLOCKED_PACKAGES, value).apply()
 
+    var lastDailyCheckInTimestamp: Long
+        get() = prefs.getLong(KEY_LAST_DAILY_CHECKIN_TIMESTAMP, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_DAILY_CHECKIN_TIMESTAMP, value).apply()
+
     // Mindful Pause ("Pause before apps") settings
     var isMindfulPauseEnabled: Boolean
         get() = prefs.getBoolean(KEY_MINDFUL_PAUSE_ENABLED, false)
@@ -279,6 +317,7 @@ class OnboardingPreferences(context: Context) {
         private const val KEY_PERSISTENT_NOTIFICATION_ENABLED = "key_persistent_notification_enabled"
         private const val KEY_HIDDEN_TASK_DELETION_ENABLED = "key_hidden_task_deletion_enabled"
         private const val KEY_OVERDUE_ALARM_ENABLED = "key_overdue_alarm_enabled"
+        private const val KEY_ALARMED_DEADLINE_PREFIX = "key_alarmed_deadline_"
         private const val KEY_USAGE_TRACKING_ENABLED = "key_usage_tracking_enabled"
         private const val KEY_HOSTAGE_MODE = "key_hostage_mode"
         private const val KEY_BLOCKED_PACKAGES = "key_blocked_packages"
@@ -288,6 +327,9 @@ class OnboardingPreferences(context: Context) {
         private const val KEY_ATTEMPT_PREFIX = "key_blocked_attempt_"
         private const val KEY_PACKAGE_CYCLES_PREFIX = "key_pkg_cycles_"
         private const val KEY_APP_DAILY_LIMIT_MINUTES_PREFIX = "key_app_limit_min_"
+        private const val KEY_APP_INTERACTION_MODE = "key_app_interaction_mode"
+        private const val KEY_DAILY_CHOSEN_APPS_LIMIT_MINUTES = "key_daily_chosen_apps_limit_minutes"
+        private const val KEY_LAST_DAILY_CHECKIN_TIMESTAMP = "key_last_daily_checkin_timestamp"
 
         private const val KEY_MINDFUL_PAUSE_ENABLED = "key_mindful_pause_enabled"
         private const val KEY_ACCESSIBILITY_DISCLOSURE_ACCEPTED = "key_accessibility_disclosure_accepted"
@@ -309,10 +351,13 @@ class OnboardingPreferences(context: Context) {
         const val DEFAULT_PAUSE_DURATION_SECONDS = 8
         const val MIN_PAUSE_DURATION_SECONDS = 4
         const val MAX_PAUSE_DURATION_SECONDS = 30
-        const val DEFAULT_PAUSE_PROMPT = "Take two slow breaths before continuing."
+        const val DEFAULT_PAUSE_PROMPT = "Take a mindful pause before continuing."
         const val DEFAULT_REINTERVENTION_MINUTES = 10
         const val DEFAULT_RETURN_GRACE_SECONDS = 30
         const val OVERDUE_UNBLOCK_COOLDOWN_MS = 10 * 60 * 1000L
+        const val DEFAULT_DAILY_CHOSEN_APPS_LIMIT_MINUTES = 30
+        const val MAX_DAILY_CHOSEN_APPS_LIMIT_MINUTES = 120
+        val DAILY_LIMIT_OPTIONS_MINUTES = listOf(15, 30, 45, 60, 90, 120)
 
         fun cyclesToDurationSeconds(cycles: Int): Int = when (cycles.coerceIn(1, 4)) {
             1 -> 5  // 1 cycle (2.5s in, 2.5s out) - Quick reset (impulse)
@@ -377,6 +422,13 @@ class OnboardingPreferences(context: Context) {
 
         private fun syncThemeFlow(mode: AppThemeMode) {
             _themeModeFlow.value = mode
+        }
+
+        private val _interactionModeFlow = MutableStateFlow(AppInteractionMode.CASUAL)
+        val interactionModeFlow: StateFlow<AppInteractionMode> = _interactionModeFlow.asStateFlow()
+
+        private fun syncInteractionModeFlow(mode: AppInteractionMode) {
+            _interactionModeFlow.value = mode
         }
     }
 }

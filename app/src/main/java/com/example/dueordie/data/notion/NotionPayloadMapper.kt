@@ -113,7 +113,9 @@ object NotionPayloadMapper {
             completedAtTimestamp = if (done) existingLocal?.completedAtTimestamp ?: nowMs else null,
             requirePhotoProof = existingLocal?.requirePhotoProof ?: false,
             photoPath = existingLocal?.photoPath,
-            isHostageModeEnabled = existingLocal?.isHostageModeEnabled ?: true,
+            // Focus Lock is a Mora-only, potentially disruptive action. A task imported
+            // from Notion must not opt the user into it without an explicit local choice.
+            isHostageModeEnabled = existingLocal?.isHostageModeEnabled ?: false,
             notionPageId = remote.pageId,
             notionSyncDirty = false,
             lastSyncedAtTimestamp = nowMs

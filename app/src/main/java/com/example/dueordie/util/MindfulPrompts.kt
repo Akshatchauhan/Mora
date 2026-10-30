@@ -12,7 +12,7 @@ object MindfulPrompts {
     val PROMPTS: List<String> = listOf(
         // 1 - 10: Impulsive Check & Awareness
         "Is this intentional, or is your thumb on autopilot?",
-        "Take two slow breaths. Decide if you really want to be here.",
+        "Pause, breathe, and decide if you want to be here.",
         "Notice the urge to scroll. Let it peak and pass like a wave.",
         "What would feel useful to do here right now?",
         "Are you actually tired, bored, or avoiding something difficult?",

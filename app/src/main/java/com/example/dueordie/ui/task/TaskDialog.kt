@@ -3,6 +3,7 @@ package com.example.dueordie.ui.task
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,8 +18,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +38,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.dueordie.data.model.InteractionModePolicy
+import com.example.dueordie.util.OnboardingPreferences
+import com.microsoft.clarity.modifiers.clarityMask
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -102,6 +109,9 @@ fun TaskDialog(
     val dateFormatter = remember { SimpleDateFormat("EEE, MMM d", Locale.getDefault()) }
     val timeFormatter = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     val isCompletedTask = editingTask?.status == TaskStatus.COMPLETED
+    val interactionMode by OnboardingPreferences.interactionModeFlow.collectAsState()
+    val isStrictTaskLocked = isEditing && !InteractionModePolicy.canEditTask(interactionMode, isTaskSaved = true)
+    val isDeadlineLocked = isCompletedTask || isStrictTaskLocked
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -111,7 +121,7 @@ fun TaskDialog(
         dragHandle = {
             Surface(
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                color = Color.LightGray.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(2.dp)
             ) {
                 Box(modifier = Modifier.size(width = 36.dp, height = 4.dp))
@@ -136,8 +146,7 @@ fun TaskDialog(
                 Text(
                     text = if (isEditing) "Edit task" else "New task",
                     style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 26.sp
+                        fontWeight = FontWeight.Bold
                     ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -160,28 +169,30 @@ fun TaskDialog(
                     },
                     shape = RoundedCornerShape(999.dp),
                     color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.defaultMinSize(minHeight = 48.dp)
                 ) {
-                    Text(
-                        text = "Save",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        ),
-                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 9.dp)
-                    )
+                    Box(
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Save",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section 1: TASK TITLE
+            // Section 1: Task title
             Text(
-                text = "TASK TITLE",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 11.sp
+                text = "Task title",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -205,23 +216,28 @@ fun TaskDialog(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline
                 ),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().clarityMask()
             )
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Section 2: DUE DATE & TIME
+            // Section 2: Due date and time
             Text(
-                text = "DUE DATE & TIME",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 11.sp
+                text = "Due date and time",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            if (isCompletedTask) {
+            if (isStrictTaskLocked) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Deadlines are locked in Strict mode to preserve committed focus.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (isCompletedTask) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Due time is locked for completed tasks.",
@@ -238,15 +254,17 @@ fun TaskDialog(
             ) {
                 // Date Pill
                 Surface(
-                    onClick = { if (!isCompletedTask) showDatePicker = true },
+                    onClick = { if (!isDeadlineLocked) showDatePicker = true },
+                    enabled = !isDeadlineLocked,
                     shape = RoundedCornerShape(999.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.weight(1f)
+                    color = if (isDeadlineLocked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -255,7 +273,7 @@ fun TaskDialog(
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (isCompletedTask) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            color = if (isDeadlineLocked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -263,16 +281,18 @@ fun TaskDialog(
 
                 // Time Pill
                 Surface(
-                    onClick = { if (!isCompletedTask) showTimePicker = true },
+                    onClick = { if (!isDeadlineLocked) showTimePicker = true },
+                    enabled = !isDeadlineLocked,
                     shape = RoundedCornerShape(999.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.weight(1f)
+                    color = if (isDeadlineLocked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 14.dp),
+                            .defaultMinSize(minHeight = 48.dp)
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -280,7 +300,7 @@ fun TaskDialog(
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (isCompletedTask) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            color = if (isDeadlineLocked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -289,13 +309,11 @@ fun TaskDialog(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Section: PRIORITY
+            // Section: Priority
             Text(
-                text = "PRIORITY",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 11.sp
+                text = "Priority",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -309,7 +327,8 @@ fun TaskDialog(
                 TaskPriority.entries.forEach { priority ->
                     val isSelected = selectedPriority == priority
                     Surface(
-                        onClick = { selectedPriority = priority },
+                        onClick = { if (!isStrictTaskLocked) selectedPriority = priority },
+                        enabled = !isStrictTaskLocked,
                         shape = RoundedCornerShape(999.dp),
                         color = if (isSelected) {
                             when (priority) {
@@ -328,11 +347,12 @@ fun TaskDialog(
                                 }
                             } else MaterialTheme.colorScheme.outline
                         ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp)
                                 .padding(vertical = 11.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -341,28 +361,26 @@ fun TaskDialog(
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 ),
-                                    color = if (isSelected) {
-                                        when (priority) {
-                                            TaskPriority.HIGH -> MaterialTheme.colorScheme.onErrorContainer
-                                            TaskPriority.MEDIUM -> MaterialTheme.colorScheme.onPrimaryContainer
-                                            TaskPriority.LOW -> MaterialTheme.colorScheme.onSurface
-                                        }
-                                    } else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                                color = if (isSelected) {
+                                    when (priority) {
+                                        TaskPriority.HIGH -> MaterialTheme.colorScheme.onErrorContainer
+                                        TaskPriority.MEDIUM -> MaterialTheme.colorScheme.onPrimaryContainer
+                                        TaskPriority.LOW -> MaterialTheme.colorScheme.onSurface
+                                    }
+                                } else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
+            }
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Section 3: NOTES
+            // Section 3: Notes
             Text(
-                text = "NOTES",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 11.sp
+                text = "Notes",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -372,7 +390,7 @@ fun TaskDialog(
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
-                placeholder = { Text("Tap the squircle on the left to complete, or tap any card to adjust timing.") },
+                placeholder = { Text("Add any details or sub-steps...") },
                 minLines = 3,
                 maxLines = 5,
                 shape = RoundedCornerShape(14.dp),
@@ -380,7 +398,7 @@ fun TaskDialog(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline
                 ),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().clarityMask()
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -438,8 +456,12 @@ fun TaskDialog(
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
+            shape = RoundedCornerShape(28.dp),
+            colors = DatePickerDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { utcMillis ->
                             val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
@@ -454,13 +476,17 @@ fun TaskDialog(
                             selectedDeadlineMs = currentCal.timeInMillis
                         }
                         showDatePicker = false
-                    }
+                    },
+                    shape = RoundedCornerShape(999.dp)
                 ) {
                     Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
+                TextButton(
+                    onClick = { showDatePicker = false },
+                    shape = RoundedCornerShape(999.dp)
+                ) {
                     Text("Cancel")
                 }
             }
@@ -478,12 +504,19 @@ fun TaskDialog(
         )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
-            title = { Text("Select due time") },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = {
+                Text(
+                    text = "Select due time",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                )
+            },
             text = {
                 TimePicker(state = timePickerState)
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         val updatedCal = Calendar.getInstance().apply {
                             timeInMillis = selectedDeadlineMs
@@ -494,13 +527,17 @@ fun TaskDialog(
                         }
                         selectedDeadlineMs = updatedCal.timeInMillis
                         showTimePicker = false
-                    }
+                    },
+                    shape = RoundedCornerShape(999.dp)
                 ) {
                     Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) {
+                TextButton(
+                    onClick = { showTimePicker = false },
+                    shape = RoundedCornerShape(999.dp)
+                ) {
                     Text("Cancel")
                 }
             }

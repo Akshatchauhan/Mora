@@ -33,29 +33,43 @@ class DailyReminderWorker(
 
             if (pendingTasks.isNotEmpty()) {
                 val now = System.currentTimeMillis()
+                // Prevent duplicate notifications firing at the same time
+                if (now - prefs.lastDailyCheckInTimestamp < 3 * 3600 * 1000L) {
+                    return Result.success()
+                }
+                prefs.lastDailyCheckInTimestamp = now
+
                 val criticalCount = pendingTasks.count { it.calculateUrgencyLevel(now) == UrgencyLevel.CRITICAL }
                 val overdueCount = pendingTasks.count { it.calculateUrgencyLevel(now) == UrgencyLevel.OVERDUE }
 
-                val slotLabel = inputData.getString("SLOT_LABEL") ?: getSlotLabelForCurrentTime()
+                val slotLabel = getSlotLabelForCurrentTime()
                 val streak = TaskDomainRules.calculateConsecutiveOnTimeStreak(
                     allTasks, now, archivedRecords = CompletionHistoryStore(context).getRecords()
                 )
                 val overdueTask = pendingTasks.filter { it.isOverdueAt(now) }.minByOrNull { it.deadlineTimestamp }
                 val nextTask = pendingTasks.filterNot { it.isOverdueAt(now) }.minByOrNull { it.deadlineTimestamp }
 
-                val title = "$slotLabel task check-in"
+                val title = "$slotLabel Check-in"
                 val message = when {
-                    overdueTask != null -> MoraNudgeEngine.buildOverdueNotificationCopy(overdueTask.title, overdueCount, streak).second
-                    nextTask != null -> MoraNudgeEngine.buildReminderNotificationCopy(nextTask, ((nextTask.deadlineTimestamp - now) / 60_000L).coerceAtLeast(1), streak).second
-                    criticalCount > 0 -> "$criticalCount task${if (criticalCount == 1) " is" else "s are"} due within 3 hours (${pendingTasks.size} pending total)."
-                    else -> "You have ${pendingTasks.size} pending task${if (pendingTasks.size == 1) "" else "s"}."
+                    overdueTask != null && overdueTask.isHostageModeEnabled && prefs.isGlobalHostageModeEnabled ->
+                        "Focus Lock active: \"${overdueTask.title}\" is past due."
+                    overdueTask != null ->
+                        "\"${overdueTask.title}\" is past its deadline. Take a moment to finish it."
+                    nextTask != null -> {
+                        val diffMin = ((nextTask.deadlineTimestamp - now) / 60_000L).coerceAtLeast(1)
+                        "\"${nextTask.title}\" is due in ${diffMin}m."
+                    }
+                    criticalCount > 0 ->
+                        "$criticalCount task${if (criticalCount == 1) " is" else "s are"} due within 3 hours."
+                    else ->
+                        "You have ${pendingTasks.size} task${if (pendingTasks.size == 1) "" else "s"} remaining today."
                 }
 
                 NotificationHelper.showReminderNotification(
                     context = context,
                     title = title,
                     message = message,
-                    notificationId = (2000 + slotLabel.hashCode() % 1000)
+                    notificationId = NotificationHelper.NOTIFICATION_ID_DAILY_CHECKIN
                 )
             }
 

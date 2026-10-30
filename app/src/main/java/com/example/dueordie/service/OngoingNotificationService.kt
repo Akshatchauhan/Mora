@@ -36,6 +36,18 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.example.dueordie.ui.permissions.DynamicMindfulPauseContent
+import com.example.dueordie.ui.theme.DueOrDieTheme
+import com.example.dueordie.util.AppInteractionMode
+import com.example.dueordie.util.OverlayLifecycleOwner
 import com.example.dueordie.DueOrDieApplication
 import com.example.dueordie.data.model.FocusLockDecision
 import com.example.dueordie.data.model.MindfulPauseConfig
@@ -73,7 +85,7 @@ import kotlinx.coroutines.launch
  * 3. Dual-mode interception:
  *    - Primary: Custom Canvas breathing overlay window (TYPE_APPLICATION_OVERLAY) with organic lung swell haptics.
  *    - Fallback / Focus Lock: Fullscreen HostageBlockActivity (singleInstance, zero-bypass).
- * 4. Exact-second deadline timer callback for immediate deadline interception.
+ * 4. Schedules deadline alarms that remain in Android's alarm service if this process stops.
  * 5. Self-healing watchdog in onTaskRemoved().
  */
 class OngoingNotificationService : Service() {
@@ -93,7 +105,9 @@ class OngoingNotificationService : Service() {
     private var overlayView: View? = null
     private var breathingAnimator: ValueAnimator? = null
     private var reInterventionRunnable: Runnable? = null
-    private var deadlineCheckRunnable: Runnable? = null
+    private var pauseActivityFallbackRunnable: Runnable? = null
+    private var presentedPauseTargetPackage: String? = null
+    private var pauseActivityVisible = false
 
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -123,6 +137,16 @@ class OngoingNotificationService : Service() {
         if (action == ACTION_CANCEL) {
             stopAndCleanup()
             return START_NOT_STICKY
+        }
+        if (action == ACTION_CONTINUE_CLICKED) {
+            stateMachine.onContinueClicked(SystemClock.elapsedRealtime())
+            removeOverlaySafely()
+            return START_STICKY
+        }
+        if (action == ACTION_LEAVE_CLICKED) {
+            stateMachine.onLeaveClicked()
+            removeOverlaySafely()
+            return START_STICKY
         }
 
         refreshLauncherPackages()
@@ -171,7 +195,11 @@ class OngoingNotificationService : Service() {
                 }
 
                 launch(Dispatchers.Main) {
-                    scheduleExactDeadlineCheck(activeTasks)
+                    DeadlineAlarmScheduler.scheduleNext(
+                        context = applicationContext,
+                        tasks = activeTasks,
+                        enabled = prefs.isOverdueAlarmEnabled
+                    )
                     syncConfigFromPreferences()
 
                     if (!shouldRunService(prefs, activeTasks, nowMs)) {
@@ -188,7 +216,8 @@ class OngoingNotificationService : Service() {
         nowMs: Long
     ): Boolean {
         val persistentNotification = prefs.isPersistentNotificationEnabled && activeTasks.isNotEmpty()
-        val mindfulPause = prefs.isMindfulPauseEnabled
+        val mindfulPause = prefs.isMindfulPauseEnabled &&
+            PermissionHelper.isPauseAndFocusAccessGranted(this)
         val focusLock = prefs.isGlobalHostageModeEnabled &&
             (TaskDomainRules.hasQualifyingFocusLockTasks(activeTasks, nowMs) || prefs.isInOverdueCooldown(nowMs))
         return persistentNotification || mindfulPause || focusLock
@@ -212,9 +241,9 @@ class OngoingNotificationService : Service() {
         val prefs = OnboardingPreferences(applicationContext)
         val fgPkg = explicitPackage ?: UsageStatsHelper.getCurrentlyForegroundPackage(applicationContext) ?: return
 
-        // Skip transient / keyboard / launcher windows
+        // Ignore our own UI and keyboard windows, but process launcher transitions so
+        // the state machine can close a pause and start the configured return grace.
         if (fgPkg == packageName ||
-            launcherPackages.contains(fgPkg) ||
             fgPkg.contains("inputmethod", ignoreCase = true) ||
             fgPkg.contains("keyboard", ignoreCase = true)
         ) {
@@ -226,6 +255,7 @@ class OngoingNotificationService : Service() {
         currentForegroundPackage = fgPkg
 
         val focusDecision: FocusLockDecision? = if (
+            !launcherPackages.contains(fgPkg) &&
             TaskDomainRules.shouldRunFocusLockMonitor(
                 isGlobalFocusLockEnabled = prefs.isGlobalHostageModeEnabled,
                 hasPermission = true,
@@ -267,7 +297,7 @@ class OngoingNotificationService : Service() {
         when (nextState) {
             is MindfulPauseState.PauseVisible -> {
                 cancelReInterventionTimer()
-                if (previousState != nextState || overlayView == null) {
+                if (previousState != nextState || presentedPauseTargetPackage != nextState.targetPackage) {
                     if (previousState != nextState) {
                         currentBlockedAttemptCount = OnboardingPreferences(applicationContext)
                             .recordBlockedAttemptAndGetCount(nextState.targetPackage)
@@ -289,10 +319,9 @@ class OngoingNotificationService : Service() {
     }
 
     private fun dispatchIntervention(pauseState: MindfulPauseState.PauseVisible) {
-        val isLowRam = PermissionHelper.isLowRamDevice(this)
-        val hasOverlay = PermissionHelper.isOverlayPermissionGranted(this)
+        removeOverlaySafely()
 
-        if (pauseState.isFocusLock || !hasOverlay || isLowRam) {
+        if (pauseState.isFocusLock) {
             // Fullscreen zero-bypass HostageBlockActivity
             val appLabel = resolveAppLabel(pauseState.targetPackage)
             val taskTitle = pauseState.focusLockTaskTitle ?: "Overdue task"
@@ -326,170 +355,100 @@ class OngoingNotificationService : Service() {
             ).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            startActivity(intent)
+            presentedPauseTargetPackage = pauseState.targetPackage
+            runCatching { startActivity(intent) }.onFailure {
+                presentedPauseTargetPackage = null
+            }
         } else {
-            // Lightweight custom-Canvas overlay with organic lung swell haptics
+            if (!PermissionHelper.isPauseAndFocusAccessGranted(this)) {
+                // Access may have been revoked while the service was running. Do not
+                // leave a gentle pause in a state that cannot be presented safely.
+                syncConfigFromPreferences()
+                removeOverlaySafely()
+                return
+            }
             showOverlayForState(pauseState)
         }
     }
+
+    private var currentOverlayLifecycleOwner: OverlayLifecycleOwner? = null
 
     private fun showOverlayForState(pauseState: MindfulPauseState.PauseVisible) {
         removeOverlaySafely()
 
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-        val prefs = OnboardingPreferences(applicationContext)
-        val themeMode = prefs.themeMode
-        val isDark = when (themeMode) {
-            AppThemeMode.SYSTEM -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-            AppThemeMode.LIGHT -> false
-            AppThemeMode.DARK, AppThemeMode.AMOLED -> true
-        }
-        val isAmoled = themeMode == AppThemeMode.AMOLED
-        val compactHeight = resources.configuration.screenHeightDp < 480
-
-        val bgColor = when {
-            isAmoled -> Color.BLACK
-            isDark -> Color.parseColor("#121A15")
-            else -> Color.parseColor("#F7F7F1")
-        }
-        val surfaceColor = when {
-            isAmoled -> Color.parseColor("#0D1310")
-            isDark -> Color.parseColor("#1B261F")
-            else -> Color.parseColor("#FFFFFF")
-        }
-        val primaryColor = if (isDark) Color.parseColor("#9CD2B0") else Color.parseColor("#315C47")
-        val onPrimaryColor = if (isDark) Color.parseColor("#121A15") else Color.parseColor("#FFFFFF")
-        val textPrimaryColor = if (isDark) Color.parseColor("#ECF3ED") else Color.parseColor("#21362C")
-        val textSecondaryColor = if (isDark) Color.parseColor("#B0C2B5") else Color.parseColor("#667269")
-
-        val appLabel = resolveAppLabel(pauseState.targetPackage)
-        val nudge = MoraNudgeEngine.buildPauseNudge(
-            appLabel = appLabel,
-            activeTasks = qualifyingFocusLockTasks,
-            attemptCountToday = currentBlockedAttemptCount,
-            fallbackPrompt = pauseState.promptText
-        )
+        presentedPauseTargetPackage = pauseState.targetPackage
 
         val rootLayout = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
                 if (event?.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    stateMachine.onLeaveClicked()
+                    removeOverlaySafely()
                     navigateToHomeScreen()
                     return true
                 }
                 return super.dispatchKeyEvent(event)
             }
         }.apply {
-            setBackgroundColor(bgColor)
             isFocusable = true
             isFocusableInTouchMode = true
         }
 
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-        }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            val pad = dp(24)
-            setPadding(pad, pad, pad, pad)
-        }
+        val lifecycleOwner = OverlayLifecycleOwner()
+        currentOverlayLifecycleOwner = lifecycleOwner
 
-        // Title
-        val titleView = TextView(this).apply {
-            text = "Pause before $appLabel"
-            setTextColor(textPrimaryColor)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (compactHeight) 22f else 26f)
-            paint.isFakeBoldText = true
-            gravity = Gravity.CENTER
-        }
-        container.addView(titleView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val prefs = OnboardingPreferences(applicationContext)
+        val appUsageMs = UsageStatsHelper.getAppUsageTodayMs(applicationContext, pauseState.targetPackage)
+        val appMinutes = appUsageMs / 60_000L
+        val chosenPackages = prefs.pauseSelectedPackages
+        val totalChosenMinutes = chosenPackages.sumOf { pkg ->
+            UsageStatsHelper.getAppUsageTodayMs(applicationContext, pkg) / 60_000L
+        }.toInt()
+        val limitMinutes = prefs.dailyChosenAppsLimitMinutes
+        val isStrictDailyLimitReached = (prefs.appInteractionMode == AppInteractionMode.STRICT) && (totalChosenMinutes >= limitMinutes)
 
-        // Badge if present
-        if (!nudge.badgeText.isNullOrBlank()) {
-            val badgeView = TextView(this).apply {
-                text = nudge.badgeText
-                setTextColor(primaryColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                gravity = Gravity.CENTER
-                setPadding(dp(12), dp(4), dp(12), dp(4))
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(16).toFloat()
-                    setColor(if (isDark) Color.parseColor("#1F332C") else Color.parseColor("#E0EFEA"))
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+
+            setContent {
+                val themeMode by OnboardingPreferences.themeModeFlow.collectAsState()
+                val isDark = when (themeMode) {
+                    AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+                    AppThemeMode.LIGHT -> false
+                    AppThemeMode.DARK, AppThemeMode.AMOLED -> true
+                }
+
+                DueOrDieTheme(darkTheme = isDark, amoledBlack = themeMode == AppThemeMode.AMOLED) {
+                    DynamicMindfulPauseContent(
+                        targetPackage = pauseState.targetPackage,
+                        promptText = pauseState.promptText,
+                        durationSeconds = pauseState.durationSeconds,
+                        isStrictDailyLimitReached = isStrictDailyLimitReached,
+                        dailyScreenTimeMinutes = appMinutes,
+                        dailyScreenTimeLimitMinutes = limitMinutes,
+                        onContinueToApp = {
+                            stateMachine.onContinueClicked(SystemClock.elapsedRealtime())
+                            removeOverlaySafely()
+                        },
+                        onStepAwayToTasks = {
+                            stateMachine.onLeaveClicked()
+                            removeOverlaySafely()
+                            navigateToHomeScreen()
+                        },
+                        onDismiss = {
+                            stateMachine.onLeaveClicked()
+                            removeOverlaySafely()
+                            navigateToHomeScreen()
+                        }
+                    )
                 }
             }
-            val badgeParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(8)
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            container.addView(badgeView, badgeParams)
         }
 
-        // Subtext / Nudge Headline (avoiding duplicate "Pause before $appLabel")
-        val subtextView = TextView(this).apply {
-            text = if (nudge.headline.equals("Pause before $appLabel", ignoreCase = true)) {
-                nudge.subtext
-            } else {
-                nudge.headline
-            }
-            setTextColor(textSecondaryColor)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, 0)
-        }
-        container.addView(subtextView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        // Breathing Circle Canvas View
-        val breathingCircle = BreathingCircleView(this, isDark, primaryColor, onPrimaryColor).apply {
-            val size = dp(if (compactHeight) 140 else 200)
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                topMargin = dp(20)
-                bottomMargin = dp(20)
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-        }
-        container.addView(breathingCircle)
-
-        // Action Buttons
-        val continueButton = Button(this).apply {
-            text = "Breathe in..."
-            isEnabled = false
-            alpha = 0.6f
-            setTextColor(onPrimaryColor)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(24).toFloat()
-                setColor(primaryColor)
-            }
-            setOnClickListener {
-                stateMachine.onContinueClicked(SystemClock.elapsedRealtime())
-                removeOverlaySafely()
-            }
-        }
-        val btnParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
-            topMargin = dp(12)
-        }
-        container.addView(continueButton, btnParams)
-
-        val leaveButton = Button(this).apply {
-            text = "Back to home"
-            setTextColor(primaryColor)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(24).toFloat()
-                setColor(surfaceColor)
-                setStroke(dp(1), primaryColor)
-            }
-            setOnClickListener {
-                stateMachine.onLeaveClicked()
-                removeOverlaySafely()
-                navigateToHomeScreen()
-            }
-        }
-        val leaveParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
-            topMargin = dp(8)
-        }
-        container.addView(leaveButton, leaveParams)
-
-        scroll.addView(container)
-        rootLayout.addView(scroll)
+        rootLayout.addView(composeView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -506,72 +465,42 @@ class OngoingNotificationService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.CENTER
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
         runCatching {
             wm.addView(rootLayout, layoutParams)
             overlayView = rootLayout
-            startBreathingAnimation(pauseState.targetPackage, pauseState.durationSeconds, breathingCircle, continueButton, appLabel)
         }
-    }
-
-    private fun startBreathingAnimation(
-        targetPackage: String,
-        totalDurationSeconds: Int,
-        breathingCircle: BreathingCircleView,
-        continueButton: Button,
-        appLabel: String
-    ) {
-        breathingAnimator?.cancel()
-        haptics.resetBreathCycle()
-        PausePing.playIfEnabled(applicationContext)
-
-        val prefs = OnboardingPreferences(applicationContext)
-        val cycles = prefs.getPauseCyclesForPackage(targetPackage).coerceIn(1, 4)
-        val effectiveDurationSeconds = OnboardingPreferences.cyclesToDurationSeconds(cycles)
-        val cycleDurationMs = (effectiveDurationSeconds * 1000L) / cycles
-        val halfCycleMs = cycleDurationMs / 2
-
-        continueButton.alpha = 0.6f
-        continueButton.isEnabled = false
-        continueButton.text = "Breathe in..."
-
-        val cycleEasing = AccelerateDecelerateInterpolator()
-        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = effectiveDurationSeconds * 1000L
-            interpolator = LinearInterpolator() // Uniform timing across all breath cycles
-            addUpdateListener { anim ->
-                val totalProgress = anim.animatedValue as Float
-                val elapsedMs = (totalProgress * duration).toLong()
-                val currentCycleTime = elapsedMs % cycleDurationMs
-                val isInhale = currentCycleTime < halfCycleMs
-                val rawRatio = if (isInhale) {
-                    currentCycleTime.toFloat() / halfCycleMs
-                } else {
-                    (currentCycleTime - halfCycleMs).toFloat() / halfCycleMs
-                }.coerceIn(0f, 1f)
-                val phaseProgress = cycleEasing.getInterpolation(rawRatio)
-
-                breathingCircle.updateState(phaseProgress, isInhale)
-                haptics.onBreathingFrame(phaseProgress, isInhale)
-
-                continueButton.text = if (isInhale) "Breathe in..." else "Breathe out..."
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    haptics.onBreathingCycleComplete()
-                    breathingCircle.updateState(1f, false)
-                    continueButton.isEnabled = true
-                    continueButton.text = "Continue to $appLabel"
-                    continueButton.animate().alpha(1f).setDuration(250).start()
-                }
-            })
-        }
-        breathingAnimator = animator
-        animator.start()
     }
 
     private fun removeOverlaySafely() {
+        pauseActivityFallbackRunnable?.let(mainHandler::removeCallbacks)
+        pauseActivityFallbackRunnable = null
+        presentedPauseTargetPackage = null
+        pauseActivityVisible = false
+        breathingAnimator?.cancel()
+        breathingAnimator = null
+        haptics.cancel()
+        overlayView?.let { view ->
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            runCatching { wm?.removeView(view) }
+        }
+        overlayView = null
+        currentOverlayLifecycleOwner?.destroy()
+        currentOverlayLifecycleOwner = null
+    }
+
+    private fun onPauseActivityVisible(targetPackage: String) {
+        if (presentedPauseTargetPackage != targetPackage) return
+        pauseActivityVisible = true
+        pauseActivityFallbackRunnable?.let(mainHandler::removeCallbacks)
+        pauseActivityFallbackRunnable = null
+
+        // If Android delayed the activity past the fallback timeout, remove the
+        // temporary window overlay now that the full-screen pause is visible.
         breathingAnimator?.cancel()
         breathingAnimator = null
         haptics.cancel()
@@ -613,35 +542,6 @@ class OngoingNotificationService : Service() {
         reInterventionRunnable = null
     }
 
-    private fun scheduleExactDeadlineCheck(tasks: List<Task>) {
-        deadlineCheckRunnable?.let(mainHandler::removeCallbacks)
-        deadlineCheckRunnable = null
-        val now = System.currentTimeMillis()
-        val nextDeadline = tasks.asSequence()
-            .filter { it.status == TaskStatus.PENDING && it.deadlineTimestamp > now }
-            .minOfOrNull { it.deadlineTimestamp } ?: return
-        val runnable = Runnable {
-            val app = applicationContext as? DueOrDieApplication ?: return@Runnable
-            serviceScope.launch(Dispatchers.IO) {
-                val nowTime = System.currentTimeMillis()
-                app.taskRepository.checkAndUpdateOverdueTasks(nowTime)
-                val prefs = OnboardingPreferences(applicationContext)
-                if (prefs.isOverdueAlarmEnabled) {
-                    val allTasks = app.taskRepository.allTasks.first()
-                    val overdueTasks = allTasks.filter { it.isOverdueAt(nowTime) && it.status != TaskStatus.COMPLETED }
-                    for (task in overdueTasks) {
-                        NotificationHelper.showOverdueAlarmNotification(applicationContext, task)
-                    }
-                }
-                mainHandler.post {
-                    checkForegroundApp()
-                }
-            }
-        }
-        deadlineCheckRunnable = runnable
-        mainHandler.postDelayed(runnable, (nextDeadline - now + 200L).coerceAtLeast(200L))
-    }
-
     private fun refreshLauncherPackages() {
         launcherPackages = runCatching {
             val homeIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
@@ -656,7 +556,7 @@ class OngoingNotificationService : Service() {
         val ignored = MindfulPauseConfig.DEFAULT_IGNORED_PACKAGES + launcherPackages
         val newConfig = MindfulPauseConfig(
             isPauseEnabled = prefs.isMindfulPauseEnabled,
-            isAccessibilityServiceEnabled = true,
+            isAccessibilityServiceEnabled = PermissionHelper.isPauseAndFocusAccessGranted(applicationContext),
             selectedPackages = prefs.pauseSelectedPackages,
             pauseDurationSeconds = prefs.pauseDurationSeconds,
             promptText = prefs.pausePromptText,
@@ -683,7 +583,6 @@ class OngoingNotificationService : Service() {
         observeJob?.cancel()
         monitorJob?.cancel()
         cancelReInterventionTimer()
-        deadlineCheckRunnable?.let(mainHandler::removeCallbacks)
         removeOverlaySafely()
         NotificationHelper.cancelOngoingNotification(applicationContext)
         try {
@@ -724,72 +623,6 @@ class OngoingNotificationService : Service() {
         super.onDestroy()
     }
 
-    private fun dp(value: Int): Int =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
-
-    private class BreathingCircleView(
-        context: Context,
-        private val isDark: Boolean,
-        private val primaryColor: Int,
-        private val onPrimaryColor: Int
-    ) : View(context) {
-
-        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 5f
-            color = if (isDark) Color.parseColor("#3A5040") else Color.parseColor("#DEE4DA")
-        }
-        private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = if (isDark) Color.parseColor("#24352A") else Color.parseColor("#EAF0E7")
-        }
-        private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = primaryColor
-        }
-        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = onPrimaryColor
-            textAlign = Paint.Align.CENTER
-            textSize = 38f
-            isFakeBoldText = true
-        }
-
-        private var progress = 0f
-        private var isInhale = true
-
-        fun updateState(phaseProgress: Float, inhale: Boolean) {
-            progress = phaseProgress
-            isInhale = inhale
-            invalidate()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val cx = width / 2f
-            val cy = height / 2f
-            val maxR = (minOf(cx, cy) - 16f).coerceAtLeast(10f)
-            val minR = maxR * 0.45f
-
-            // Outer subtle boundary ring
-            canvas.drawCircle(cx, cy, maxR, ringPaint)
-
-            // Soft soothing halo container
-            canvas.drawCircle(cx, cy, maxR - 8f, haloPaint)
-
-            // Dynamic lung-filling air circle
-            val currentR = if (isInhale) {
-                minR + (maxR - 16f - minR) * progress
-            } else {
-                (maxR - 16f) - (maxR - 16f - minR) * progress
-            }
-            canvas.drawCircle(cx, cy, currentR, circlePaint)
-
-            val text = if (isInhale) "Breathe in" else "Breathe out"
-            val textY = cy - ((textPaint.descent() + textPaint.ascent()) / 2f)
-            canvas.drawText(text, cx, textY, textPaint)
-        }
-    }
-
     internal fun handleForegroundAppDetected(pkg: String) {
         serviceScope.launch(Dispatchers.Default) {
             checkForegroundApp(pkg)
@@ -799,9 +632,44 @@ class OngoingNotificationService : Service() {
     companion object {
         const val ACTION_START_OR_UPDATE = "com.example.dueordie.action.START_OR_UPDATE_ONGOING"
         const val ACTION_CANCEL = "com.example.dueordie.action.CANCEL_ONGOING"
+        const val ACTION_CONTINUE_CLICKED = "com.example.dueordie.action.CONTINUE_CLICKED"
+        const val ACTION_LEAVE_CLICKED = "com.example.dueordie.action.LEAVE_CLICKED"
+        private const val PAUSE_ACTIVITY_VISIBLE_TIMEOUT_MS = 2500L
 
         @Volatile
         private var instance: OngoingNotificationService? = null
+
+        fun notifyContinueClicked(context: Context) {
+            val intent = Intent(context, OngoingNotificationService::class.java).apply {
+                action = ACTION_CONTINUE_CLICKED
+            }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(context, intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        fun notifyLeaveClicked(context: Context) {
+            val intent = Intent(context, OngoingNotificationService::class.java).apply {
+                action = ACTION_LEAVE_CLICKED
+            }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(context, intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        fun notifyPauseActivityVisible(targetPackage: String) {
+            instance?.onPauseActivityVisible(targetPackage)
+        }
 
         fun notifyForegroundAppChanged(context: Context, packageName: String) {
             val current = instance

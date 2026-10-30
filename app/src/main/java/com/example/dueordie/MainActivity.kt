@@ -13,6 +13,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import com.microsoft.clarity.Clarity
+import com.microsoft.clarity.ClarityConfig
+import com.microsoft.clarity.models.LogLevel
 import com.example.dueordie.service.OngoingNotificationService
 import com.example.dueordie.ui.navigation.AppNavigation
 import com.example.dueordie.ui.theme.DueOrDieTheme
@@ -59,6 +62,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Ensure Microsoft Clarity is initialized with project ID z4f5ufifl3
+        val clarityConfig = ClarityConfig(
+            projectId = "z4f5ufifl3",
+            logLevel = LogLevel.Verbose
+        )
+        Clarity.initialize(applicationContext, clarityConfig)
 
         val onboardingPrefs = OnboardingPreferences(this)
 

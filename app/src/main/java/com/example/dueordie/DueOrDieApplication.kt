@@ -8,6 +8,9 @@ import com.example.dueordie.data.notion.NotionPreferences
 import com.example.dueordie.data.notion.NotionSyncManager
 import com.example.dueordie.util.NotificationHelper
 import com.example.dueordie.worker.WorkManagerScheduler
+import com.microsoft.clarity.Clarity
+import com.microsoft.clarity.ClarityConfig
+import com.microsoft.clarity.models.LogLevel
 
 class DueOrDieApplication : Application() {
 
@@ -18,6 +21,13 @@ class DueOrDieApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Initialize Microsoft Clarity officially at Application startup
+        val clarityConfig = ClarityConfig(
+            projectId = "z4f5ufifl3",
+            logLevel = LogLevel.Verbose
+        )
+        Clarity.initialize(applicationContext, clarityConfig)
+
         NotificationHelper.createNotificationChannel(this)
         WorkManagerScheduler.scheduleAllWorkers(this)
     }

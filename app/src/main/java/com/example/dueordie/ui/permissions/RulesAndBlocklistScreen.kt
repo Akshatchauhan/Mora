@@ -104,6 +104,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.rememberCoroutineScope
 import com.example.dueordie.R
 import com.example.dueordie.data.local.AppDatabase
+import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.Tune
+import com.example.dueordie.util.AppInteractionMode
 import com.example.dueordie.data.model.MindfulPauseConfig
 import com.example.dueordie.data.model.PauseFeatureStatus
 import com.example.dueordie.data.model.Task
@@ -291,6 +294,81 @@ fun RulesAndBlocklistScreen(
         }
 
         // ==========================================
+        // 0. OPERATING MODE (Strict vs Casual)
+        // ==========================================
+        var interactionMode by remember { mutableStateOf(onboardingPrefs.appInteractionMode) }
+
+        FigmaSectionLabel(text = "Operating Mode")
+
+        FigmaSettingCard {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (interactionMode == AppInteractionMode.STRICT) "Strict Mode" else "Casual Mode",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (interactionMode == AppInteractionMode.STRICT) {
+                                "Commitment focus: locked deadlines, deliberate hold-to-complete, read-only details, and prompt Focus Lock."
+                            } else {
+                                "Everyday flow: tap-to-complete, flexible rescheduling, and instant task editing."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        colors = settingsChoiceChipColors,
+                        selected = interactionMode == AppInteractionMode.STRICT,
+                        onClick = {
+                            interactionMode = AppInteractionMode.STRICT
+                            onboardingPrefs.appInteractionMode = AppInteractionMode.STRICT
+                        },
+                        label = {
+                            Text(
+                                text = "Strict Mode",
+                                fontWeight = if (interactionMode == AppInteractionMode.STRICT) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                    FilterChip(
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        colors = settingsChoiceChipColors,
+                        selected = interactionMode == AppInteractionMode.CASUAL,
+                        onClick = {
+                            interactionMode = AppInteractionMode.CASUAL
+                            onboardingPrefs.appInteractionMode = AppInteractionMode.CASUAL
+                        },
+                        label = {
+                            Text(
+                                text = "Casual Mode",
+                                fontWeight = if (interactionMode == AppInteractionMode.CASUAL) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
+        // ==========================================
         // 1. NOTION INTEGRATION CARD (Top Section)
         // ==========================================
         FigmaSectionLabel(text = "Integrations")
@@ -355,37 +433,13 @@ fun RulesAndBlocklistScreen(
         FigmaSectionLabel(text = "Mindful pause")
 
         FigmaSettingCard {
-            // Mindful Pause Master Row (9:82)
+            // Mindful Pause Master Switch
             FigmaSettingRow(
                 icon = Icons.Rounded.PauseCircle,
-                iconBg = MaterialTheme.colorScheme.primary,
-                iconTint = MaterialTheme.colorScheme.onPrimary,
-                title = "Mindful pause",
-                configuration = if (isMindfulPauseEnabled) "On" else "Off",
-                onClick = {
-                    val next = !isMindfulPauseEnabled
-                    isMindfulPauseEnabled = next
-                    onboardingPrefs.isMindfulPauseEnabled = next
-                    if (next) {
-                        if (!uiState.isAccessibilityServiceEnabled) {
-                            requestAccessibilityWithDisclosure()
-                        }
-                        OngoingNotificationService.startOrUpdate(context)
-                    }
-                }
-            ) {
-                PauseStatusBadge(status = pauseFeatureStatus)
-            }
-
-            FigmaDivider()
-
-            // Pause before apps switch (9:94)
-            FigmaSettingRow(
-                icon = Icons.Rounded.PauseCircle,
-                iconBg = MaterialTheme.colorScheme.primaryContainer,
-                iconTint = MaterialTheme.colorScheme.primary,
+                iconBg = if (isMindfulPauseEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+                iconTint = if (isMindfulPauseEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
                 title = "Pause before apps",
-                configuration = "Take two slow breaths before opening apps you choose."
+                configuration = "Take a mindful pause before opening selected apps."
             ) {
                 FigmaSwitch(
                     checked = isMindfulPauseEnabled,
@@ -497,7 +551,7 @@ fun RulesAndBlocklistScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Take two calm breaths before opening paused apps.",
+                                text = "Take a mindful pause before opening paused apps.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
@@ -572,6 +626,96 @@ fun RulesAndBlocklistScreen(
                                             label = { Text("${minutes}m", maxLines = 1) }
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    FigmaDivider()
+
+                    // Daily screen time limit for chosen apps (30m Default, max 2h)
+                    var dailyLimitExpanded by remember { mutableStateOf(false) }
+                    var dailyLimitMinutes by remember { mutableIntStateOf(onboardingPrefs.dailyChosenAppsLimitMinutes) }
+
+                    FigmaSettingRow(
+                        icon = Icons.Rounded.HourglassTop,
+                        iconBg = MaterialTheme.colorScheme.primaryContainer,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "Daily limit for chosen apps",
+                        configuration = when (dailyLimitMinutes) {
+                            60 -> "1 hour daily cap"
+                            90 -> "1h 30m daily cap"
+                            120 -> "2 hours max daily cap"
+                            else -> "${dailyLimitMinutes}m daily cap${if (dailyLimitMinutes == 30) " (Default)" else ""}"
+                        },
+                        onClick = { dailyLimitExpanded = !dailyLimitExpanded }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ExpandMore,
+                            contentDescription = if (dailyLimitExpanded) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .graphicsLayer { rotationZ = if (dailyLimitExpanded) 180f else 0f }
+                        )
+                    }
+
+                    AnimatedVisibility(visible = dailyLimitExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "Daily screen time cap",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Total combined usage allowed across all chosen apps per day. Default is 30 mins, up to a strict 2-hour ceiling. When reached, apps lock or require mindful pause.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(15, 30, 45).forEach { mins ->
+                                    FilterChip(
+                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                        colors = settingsChoiceChipColors,
+                                        selected = dailyLimitMinutes == mins,
+                                        onClick = {
+                                            dailyLimitMinutes = mins
+                                            onboardingPrefs.dailyChosenAppsLimitMinutes = mins
+                                        },
+                                        label = {
+                                            Text(
+                                                text = if (mins == 30) "30m (Default)" else "${mins}m",
+                                                maxLines = 1,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(60 to "1h", 90 to "1h 30m", 120 to "2h (Max)").forEach { (mins, label) ->
+                                    FilterChip(
+                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                        colors = settingsChoiceChipColors,
+                                        selected = dailyLimitMinutes == mins,
+                                        onClick = {
+                                            dailyLimitMinutes = mins
+                                            onboardingPrefs.dailyChosenAppsLimitMinutes = mins
+                                        },
+                                        label = {
+                                            Text(
+                                                text = label,
+                                                maxLines = 1,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -787,6 +931,7 @@ fun RulesAndBlocklistScreen(
                         if (enabled) {
                             requestNotificationPermissionIfNeeded()
                         }
+                        OngoingNotificationService.startOrUpdate(context)
                     }
                 )
             }
@@ -1579,7 +1724,7 @@ private fun PauseSettingsTourDialog(
     onContinue: () -> Unit,
     onSkip: () -> Unit
 ) {
-    val titles = listOf("Choose apps", "Set the pause", "Repeat & return")
+    val titles = listOf("Choose apps", "Set the pause", "Repeat and return")
     val descriptions = listOf(
         "Choose only the apps where you want a breathing pause. You can change this list any time.",
         "Choose how long the breathing pause lasts before opening selected apps.",
@@ -1587,17 +1732,64 @@ private fun PauseSettingsTourDialog(
     )
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onSkip,
-        title = { Text("${step + 1} of ${titles.size}: ${titles[step]}") },
-        text = { Text(descriptions[step]) },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                ) {
+                    Text(
+                        text = "Step ${step + 1} of ${titles.size}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Text(
+                    text = titles[step],
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        text = {
+            Text(
+                text = descriptions[step],
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onContinue, modifier = Modifier.heightIn(min = 48.dp)) {
+            androidx.compose.material3.Button(
+                onClick = onContinue,
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier.heightIn(min = 44.dp)
+            ) {
                 Text(if (step == titles.lastIndex) "Done" else "Next")
             }
         },
         dismissButton = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.TextButton(onClick = onSkip, modifier = Modifier.heightIn(min = 48.dp)) { Text("Skip") }
-                if (step > 0) androidx.compose.material3.TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
+                androidx.compose.material3.TextButton(
+                    onClick = onSkip,
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.heightIn(min = 44.dp)
+                ) {
+                    Text("Skip")
+                }
+                if (step > 0) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    androidx.compose.material3.TextButton(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.heightIn(min = 44.dp)
+                    ) {
+                        Text("Back")
+                    }
+                }
             }
         }
     )
@@ -1609,10 +1801,13 @@ private fun HowItWorksDialog(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
         title = {
             Text(
                 text = "How Mora works",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
             )
         },
         text = {
@@ -1620,10 +1815,10 @@ private fun HowItWorksDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 HowItWorksItem(
-                    heading = "1. Tasks & due dates",
+                    heading = "1. Tasks and due dates",
                     body = "Add tasks with a due date and time. Tasks finished at or before their due time count as completed on time; tasks finished after their due time count as completed late."
                 )
                 HowItWorksItem(
@@ -1631,7 +1826,7 @@ private fun HowItWorksDialog(
                     body = "Deadline reminders send periodic check-ins for upcoming and past-due tasks. The optional persistent status notification shows your next due task in the notification shade."
                 )
                 HowItWorksItem(
-                    heading = "3. Progress & streaks",
+                    heading = "3. Progress and streaks",
                     body = "On-time rate measures on-time completions against late completions and currently overdue tasks once you complete your first task. Consecutive-day streaks and completion history are preserved even if you delete old tasks."
                 )
                 HowItWorksItem(
@@ -1639,17 +1834,23 @@ private fun HowItWorksDialog(
                     body = "When Track app usage is enabled with Usage Access, Progress shows today's top foreground app durations stored locally on your phone."
                 )
                 HowItWorksItem(
-                    heading = "5. Pause before apps & Focus lock",
+                    heading = "5. Pause before apps and Focus lock",
                     body = "Pause before apps shows a calm breathing screen for 8-20 seconds when you open selected apps, with an optional return grace window and repeat timer. Focus lock shows a reminder only when a Focus lock task is overdue."
                 )
                 HowItWorksItem(
-                    heading = "6. Permissions & battery tips",
+                    heading = "6. Permissions and battery tips",
                     body = "Every permission is optional and requested only when you turn on a feature that needs it. Background reliability in Settings shows your battery status and opens Android's battery controls if reminders or app pauses are delayed."
                 )
             }
         },
         confirmButton = {
-            androidx.compose.material3.Button(onClick = onDismiss) {
+            androidx.compose.material3.Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
                 Text("Close")
             }
         }

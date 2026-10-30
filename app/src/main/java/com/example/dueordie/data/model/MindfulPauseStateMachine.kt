@@ -11,7 +11,7 @@ data class MindfulPauseConfig(
     val isAccessibilityServiceEnabled: Boolean = false,
     val selectedPackages: Set<String> = emptySet(),
     val pauseDurationSeconds: Int = 8,
-    val promptText: String = "Take two slow breaths before continuing.",
+    val promptText: String = "Take a mindful pause before continuing.",
     val isReInterventionEnabled: Boolean = true,
     val reInterventionIntervalMinutes: Int = 10,
     val disabledReInterventionPackages: Set<String> = emptySet(),

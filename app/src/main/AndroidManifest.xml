@@ -69,6 +69,17 @@
             android:label="Focus Lock"
             android:theme="@style/Theme.DueOrDie" />
 
+        <activity
+            android:name=".ui.permissions.MindfulPauseActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:label="Mindful Pause"
+            android:theme="@style/Theme.DueOrDie.Translucent" />
+
         <service
             android:name=".service.OngoingNotificationService"
             android:exported="false"
@@ -115,6 +126,10 @@
 
         <receiver
             android:name=".service.TaskActionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".service.DeadlineAlarmReceiver"
             android:exported="false" />
 
         <receiver

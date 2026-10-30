@@ -1,5 +1,6 @@
 package com.example.dueordie.ui.permissions
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -109,8 +110,9 @@ fun SelectBlockedAppsDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
                 .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
             tonalElevation = 2.dp
         ) {
             Column(
@@ -145,7 +147,7 @@ fun SelectBlockedAppsDialog(
                         )
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(999.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -285,7 +287,7 @@ fun SelectBlockedAppsDialog(
                                                 ).forEach { (cycles, label) ->
                                                     val isSelected = appCycles == cycles
                                                     Surface(
-                                                        shape = RoundedCornerShape(6.dp),
+                                                        shape = RoundedCornerShape(999.dp),
                                                         color = if (isSelected) {
                                                             MaterialTheme.colorScheme.primaryContainer
                                                         } else {
@@ -306,7 +308,7 @@ fun SelectBlockedAppsDialog(
                                                             } else {
                                                                 MaterialTheme.colorScheme.onSurfaceVariant
                                                             },
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                                         )
                                                     }
                                                 }
@@ -337,13 +339,16 @@ fun SelectBlockedAppsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(999.dp)
+                    ) {
                         Text("Cancel")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = { onSave(selectedPackages) },
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(999.dp)
                     ) {
                         Text("Save")
                     }

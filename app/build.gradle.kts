@@ -14,8 +14,8 @@ android {
         applicationId = "com.intellectexplorer.mora"
         minSdk = 24
         targetSdk = 37
-        versionCode = 4
-        versionName = "2.3.58"
+        versionCode = 5
+        versionName = "2.3.59"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -77,6 +77,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
+    implementation("com.microsoft.clarity:clarity-compose:3.+")
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.junit)

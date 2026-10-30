@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.dueordie.DueOrDieApplication
 import com.example.dueordie.data.model.CompletionHistoryStore
+import com.example.dueordie.data.model.InteractionModePolicy
 import com.example.dueordie.data.model.Task
 import com.example.dueordie.data.model.TaskDomainRules
 import com.example.dueordie.data.model.TaskPriority
@@ -56,8 +57,20 @@ class TaskViewModel(
 ) : ViewModel() {
 
     private sealed interface UndoAction {
-        data class DeletedTask(val task: Task) : UndoAction
-        data class CompletedTask(val previousTask: Task) : UndoAction
+        val previousCooldownUntilMs: Long
+        val previousCooldownTaskTitle: String
+
+        data class DeletedTask(
+            val task: Task,
+            override val previousCooldownUntilMs: Long,
+            override val previousCooldownTaskTitle: String
+        ) : UndoAction
+
+        data class CompletedTask(
+            val previousTask: Task,
+            override val previousCooldownUntilMs: Long,
+            override val previousCooldownTaskTitle: String
+        ) : UndoAction
     }
 
     private val appContext = context.applicationContext
@@ -235,7 +248,8 @@ class TaskViewModel(
         priority: TaskPriority = TaskPriority.MEDIUM,
         requirePhotoProof: Boolean = false,
         isHostageModeEnabled: Boolean = false,
-        photoPath: String? = null
+        photoPath: String? = null,
+        canEditDeadline: Boolean = true
     ) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
@@ -265,6 +279,8 @@ class TaskViewModel(
                         TaskDomainRules.deletePhotoFileIfPresent(currentEditing.photoPath)
                     }
                 }
+                val currentMode = OnboardingPreferences(appContext).appInteractionMode
+                val effectiveCanEditDeadline = InteractionModePolicy.canEditTask(currentMode, isTaskSaved = true) && canEditDeadline
                 val updatedTask = TaskDomainRules.resolveEditedTask(
                     existingTask = currentEditing,
                     newTitle = title,
@@ -274,7 +290,8 @@ class TaskViewModel(
                     effectivePhotoPath = effectivePhotoPath,
                     isHostageModeEnabled = isHostageModeEnabled,
                     priority = priority,
-                    nowMs = now
+                    nowMs = now,
+                    canEditDeadline = effectiveCanEditDeadline
                 )
                 if (currentEditing.isOverdueAt(now) &&
                     (currentEditing.isHostageModeEnabled || OnboardingPreferences(appContext).isGlobalHostageModeEnabled) &&
@@ -301,12 +318,19 @@ class TaskViewModel(
                     repository.markAsPending(task.id)
                 }
             } else {
+                val preferences = OnboardingPreferences(appContext)
+                val previousCooldownUntilMs = preferences.overdueCooldownUntilWallMs
+                val previousCooldownTaskTitle = preferences.lastCooldownTaskTitle
                 val isOverdueWithLock = task.isOverdueAt(now) && (task.isHostageModeEnabled || OnboardingPreferences(appContext).isGlobalHostageModeEnabled)
+                lastUndoAction = UndoAction.CompletedTask(
+                    previousTask = task,
+                    previousCooldownUntilMs = previousCooldownUntilMs,
+                    previousCooldownTaskTitle = previousCooldownTaskTitle
+                )
                 if (isOverdueWithLock) {
                     startOverdueCooldown(task, now)
                 }
                 finalizePendingDeleteCleanup()
-                lastUndoAction = UndoAction.CompletedTask(task)
                 completionHistoryStore.recordCompletion(
                     taskId = task.id,
                     deadlineTimestamp = task.deadlineTimestamp,
@@ -334,8 +358,13 @@ class TaskViewModel(
     fun completeTaskWithoutPhoto(task: Task) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val preferences = OnboardingPreferences(appContext)
             finalizePendingDeleteCleanup()
-            lastUndoAction = UndoAction.CompletedTask(task)
+            lastUndoAction = UndoAction.CompletedTask(
+                previousTask = task,
+                previousCooldownUntilMs = preferences.overdueCooldownUntilWallMs,
+                previousCooldownTaskTitle = preferences.lastCooldownTaskTitle
+            )
             completionHistoryStore.recordCompletion(
                 taskId = task.id,
                 deadlineTimestamp = task.deadlineTimestamp,
@@ -362,8 +391,13 @@ class TaskViewModel(
     fun onPhotoProofCaptured(task: Task, photoPath: String) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val preferences = OnboardingPreferences(appContext)
             finalizePendingDeleteCleanup()
-            lastUndoAction = UndoAction.CompletedTask(task)
+            lastUndoAction = UndoAction.CompletedTask(
+                previousTask = task,
+                previousCooldownUntilMs = preferences.overdueCooldownUntilWallMs,
+                previousCooldownTaskTitle = preferences.lastCooldownTaskTitle
+            )
             completionHistoryStore.recordCompletion(
                 taskId = task.id,
                 deadlineTimestamp = task.deadlineTimestamp,
@@ -399,11 +433,18 @@ class TaskViewModel(
     fun deleteTask(task: Task) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val preferences = OnboardingPreferences(appContext)
+            val previousCooldownUntilMs = preferences.overdueCooldownUntilWallMs
+            val previousCooldownTaskTitle = preferences.lastCooldownTaskTitle
             if (task.isOverdueAt(now) && (task.isHostageModeEnabled || OnboardingPreferences(appContext).isGlobalHostageModeEnabled)) {
                 startOverdueCooldown(task, now)
             }
             finalizePendingDeleteCleanup()
-            lastUndoAction = UndoAction.DeletedTask(task)
+            lastUndoAction = UndoAction.DeletedTask(
+                task = task,
+                previousCooldownUntilMs = previousCooldownUntilMs,
+                previousCooldownTaskTitle = previousCooldownTaskTitle
+            )
             repository.deleteTask(task)
             NotificationHelper.cancelOverdueAlarmNotification(appContext, task.id)
             _uiState.update {
@@ -434,6 +475,11 @@ class TaskViewModel(
                     repository.updateTask(action.previousTask)
                 }
                 null -> Unit
+            }
+            lastUndoAction?.let { action ->
+                val preferences = OnboardingPreferences(appContext)
+                preferences.overdueCooldownUntilWallMs = action.previousCooldownUntilMs
+                preferences.lastCooldownTaskTitle = action.previousCooldownTaskTitle
             }
             lastUndoAction = null
             _uiState.update {
