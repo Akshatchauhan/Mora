@@ -206,7 +206,7 @@ The complete presentation-grade UX Case Study artboards, device frames, and toke
 This project is open-source and licensed under the **[MIT License](LICENSE)**.
 
 ```
-Copyright (c) 2026 Akshay
+Copyright (c) 2026 Akshat Chauhan
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -220,5 +220,5 @@ furnished to do so, subject to the following conditions:
 ---
 
 <div align="center">
-  <sub>Crafted with intentionality by Akshay. Tested in the real world on Realme GT 6.</sub>
+  <sub>Crafted with intentionality by Akshat Chauhan. Tested in the real world on Realme GT 6.</sub>
 </div>
